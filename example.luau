@@ -463,7 +463,7 @@ ThemesTab:CreateParagraph({
 
 ThemesTab:CreateParagraph({
 	name = "Midnight",
-"description = "Deep purple-blue tones. Darker and more subdued.",
+	description = "Deep purple-blue tones. Darker and more subdued.",
 })
 
 ThemesTab:CreateParagraph({

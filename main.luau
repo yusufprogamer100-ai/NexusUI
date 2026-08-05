@@ -23,6 +23,21 @@ local TextService = game:GetService("TextService")
 local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
+-- Polyfill: table.clone (some executors don't have it)
+if not table.clone then
+	function table.clone(t)
+		local clone = {}
+		for k, v in t do
+			if typeof(v) == "table" then
+				clone[k] = table.clone(v)
+			else
+				clone[k] = v
+			end
+		end
+		return clone
+	end
+end
+
 -- ============================================================================
 -- UTILITY
 -- ============================================================================
@@ -842,13 +857,7 @@ function Utility.TableSubsequence(t, indices)
 	return result
 end
 
-function Table.clone(t)
-	local clone = {}
-	for k, v in t do clone[k] = v end
-	return clone
-end
-
-if not table.clone then table.clone = Table.clone end
+if not table.clone then table.clone = function(t) local c = {}; for k,v in t do c[k] = v end; return c end end
 
 -- ============================================================================
 -- THEMES
@@ -3420,20 +3429,20 @@ function ColorPicker:_buildPanel()
 		PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10), Parent = self.panel,
 	})
 
-	self饱和度Panel = self.window:Create("Frame", {
+	selfsatPanel = self.window:Create("Frame", {
 		Size = UDim2.new(1, -120, 1, -30), BorderSizePixel = 0,
 		BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 5, Parent = self.panel,
 	})
-	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = self.饱和度Panel })
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = self.satPanel })
 
 	self.satGradient = self.window:Create("UIGradient", {
 		Color = ColorSequence.new(Color3.new(1, 1, 1), colorFromHSV(self.hue, 1, 1)),
-		Rotation = 0, Parent = self.饱和度Panel,
+		Rotation = 0, Parent = self.satPanel,
 	})
 
 	self.valOverlay = self.window:Create("Frame", {
 		Size = UDim2.fromScale(1, 1), BorderSizePixel = 0,
-		BackgroundColor3 = Color3.new(0, 0, 0), ZIndex = 6, Parent = self.饱和度Panel,
+		BackgroundColor3 = Color3.new(0, 0, 0), ZIndex = 6, Parent = self.satPanel,
 	})
 	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = self.valOverlay })
 	self.window:Create("UIGradient", {
@@ -3445,7 +3454,7 @@ function ColorPicker:_buildPanel()
 	self.satCursor = self.window:Create("Frame", {
 		Size = UDim2.fromOffset(14, 14), AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(self.saturation, 0, 1 - self.brightness, 0),
-		BorderSizePixel = 0, ZIndex = 10, BackgroundColor3 = Color3.new(1, 1, 1), Parent = self.饱和度Panel,
+		BorderSizePixel = 0, ZIndex = 10, BackgroundColor3 = Color3.new(1, 1, 1), Parent = self.satPanel,
 	})
 	self.window:Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = self.satCursor })
 	self.window:Create("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 2, Parent = self.satCursor })
@@ -3504,7 +3513,7 @@ function ColorPicker:_buildPanel()
 
 	self.satInteract = self.window:Create("TextButton", {
 		BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
-		Text = "", TextTransparency = 1, ZIndex = 15, Parent = self.饱和度Panel,
+		Text = "", TextTransparency = 1, ZIndex = 15, Parent = self.satPanel,
 	})
 	self.hueInteract = self.window:Create("TextButton", {
 		BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
@@ -3551,8 +3560,8 @@ function ColorPicker:_buildPanel()
 end
 
 function ColorPicker:_updateSV(input)
-	local absPos = self.饱和度Panel.AbsolutePosition
-	local absSize = self.饱和度Panel.AbsoluteSize
+	local absPos = self.satPanel.AbsolutePosition
+	local absSize = self.satPanel.AbsoluteSize
 	local x = math.clamp((input.Position.X - absPos.X) / absSize.X, 0, 1)
 	local y = math.clamp((input.Position.Y - absPos.Y) / absSize.Y, 0, 1)
 	self.saturation = x
@@ -3562,8 +3571,8 @@ end
 
 function ColorPicker:_updateSVFromMouse()
 	local mouse = UserInputService:GetMouseLocation()
-	local absPos = self.饱和度Panel.AbsolutePosition
-	local absSize = self.饱和度Panel.AbsoluteSize
+	local absPos = self.satPanel.AbsolutePosition
+	local absSize = self.satPanel.AbsoluteSize
 	local x = math.clamp((mouse.X - absPos.X) / absSize.X, 0, 1)
 	local y = math.clamp((mouse.Y - absPos.Y) / absSize.Y, 0, 1)
 	self.saturation = x
@@ -4088,6 +4097,142 @@ function Window:_buildTopbar()
 		HorizontalAlignment = Enum.HorizontalAlignment.Right,
 		SortOrder = Enum.SortOrder.LayoutOrder, Parent = self.actionContainer,
 	})
+
+	-- Close button
+	self.closeButton = self:Create("Frame", {
+		Size = UDim2.fromOffset(24, 24),
+		BackgroundColor3 = Color3.fromRGB(200, 60, 60),
+		BorderSizePixel = 0,
+		Parent = self.actionContainer,
+	})
+	self:Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = self.closeButton })
+	local closeIcon = self:Create("Frame", {
+		Size = UDim2.fromOffset(8, 2),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = Color3.fromRGB(80, 20, 20),
+		BorderSizePixel = 0,
+		Parent = self.closeButton,
+	})
+	self:Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = closeIcon })
+	local closeIcon2 = self:Create("Frame", {
+		Size = UDim2.fromOffset(2, 8),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = Color3.fromRGB(80, 20, 20),
+		BorderSizePixel = 0,
+		Parent = self.closeButton,
+	})
+	self:Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = closeIcon2 })
+	local closeBtn = self:Create("TextButton", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Text = "",
+		ZIndex = 15,
+		Parent = self.closeButton,
+	})
+	self:Connect(closeBtn.MouseButton1Click, function()
+		self:Unload()
+	end)
+	self:Connect(self.closeButton.MouseEnter, function()
+		Utility.Tween(self.closeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(220, 70, 70) })
+		Utility.Tween(closeIcon, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(255, 255, 255) })
+		Utility.Tween(closeIcon2, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(255, 255, 255) })
+	end)
+	self:Connect(self.closeButton.MouseLeave, function()
+		Utility.Tween(self.closeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(200, 60, 60) })
+		Utility.Tween(closeIcon, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(80, 20, 20) })
+		Utility.Tween(closeIcon2, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(80, 20, 20) })
+	end)
+
+	-- Minimize button
+	self.minimizeButton = self:Create("Frame", {
+		Size = UDim2.fromOffset(24, 24),
+		BackgroundColor3 = Color3.fromRGB(220, 180, 50),
+		BorderSizePixel = 0,
+		LayoutOrder = -1,
+		Parent = self.actionContainer,
+	})
+	self:Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = self.minimizeButton })
+	local minBar = self:Create("Frame", {
+		Size = UDim2.fromOffset(8, 2),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = Color3.fromRGB(100, 80, 20),
+		BorderSizePixel = 0,
+		Parent = self.minimizeButton,
+	})
+	self:Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = minBar })
+	local minBtn = self:Create("TextButton", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Text = "",
+		ZIndex = 15,
+		Parent = self.minimizeButton,
+	})
+	self:Connect(minBtn.MouseButton1Click, function()
+		self:Hide()
+	end)
+	self:Connect(self.minimizeButton.MouseEnter, function()
+		Utility.Tween(self.minimizeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(240, 200, 60) })
+		Utility.Tween(minBar, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(255, 255, 255) })
+	end)
+	self:Connect(self.minimizeButton.MouseLeave, function()
+		Utility.Tween(self.minimizeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(220, 180, 50) })
+		Utility.Tween(minBar, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(100, 80, 20) })
+	end)
+
+	-- Maximize button
+	self.maximizeButton = self:Create("Frame", {
+		Size = UDim2.fromOffset(24, 24),
+		BackgroundColor3 = Color3.fromRGB(60, 180, 80),
+		BorderSizePixel = 0,
+		LayoutOrder = -2,
+		Parent = self.actionContainer,
+	})
+	self:Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = self.maximizeButton })
+	local maxIcon = self:Create("Frame", {
+		Size = UDim2.fromOffset(8, 8),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = Color3.fromRGB(20, 80, 30),
+		BorderSizePixel = 0,
+		Parent = self.maximizeButton,
+	})
+	self:Create("UICorner", { CornerRadius = UDim.new(0, 2), Parent = maxIcon })
+	self:Create("UIStroke", { Color = Color3.fromRGB(20, 80, 30), Thickness = 1, Parent = maxIcon })
+	local maxBtn = self:Create("TextButton", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Text = "",
+		ZIndex = 15,
+		Parent = self.maximizeButton,
+	})
+	self._maximized = false
+	self._preMaxSize = nil
+	self:Connect(maxBtn.MouseButton1Click, function()
+		self._maximized = not self._maximized
+		if self._maximized then
+			self._preMaxSize = self.main.Size
+			Utility.Tween(self.main, Utility.TweenInfo(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+				Size = UDim2.new(0.8, 0, 0.85, 0),
+				Position = UDim2.new(0.5, 0, 0.5, 0),
+			})
+		else
+			Utility.Tween(self.main, Utility.TweenInfo(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+				Size = self._preMaxSize or UDim2.fromOffset(520, 460),
+				Position = UDim2.new(0.5, 0, 0.5, 0),
+			})
+		end
+	end)
+	self:Connect(self.maximizeButton.MouseEnter, function()
+		Utility.Tween(self.maximizeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(70, 200, 90) })
+		Utility.Tween(maxIcon, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(255, 255, 255) })
+	end)
+	self:Connect(self.maximizeButton.MouseLeave, function()
+		Utility.Tween(self.maximizeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(60, 180, 80) })
+		Utility.Tween(maxIcon, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(20, 80, 30) })
+	end)
 end
 
 function Window:_buildTabBar()
@@ -4212,57 +4357,10 @@ function Window:CreateTab(properties)
 end
 
 function Window:Notify(properties)
-	properties = properties or {}
-	local duration = properties.duration or 3
-	if not self._notifications then
-		self._notifications = self:Create("Frame", {
-			Name = "Notifications", Size = UDim2.new(0, 280, 0, 600),
-			Position = UDim2.new(1, -16, 1, -16), AnchorPoint = Vector2.new(1, 1),
-			BackgroundTransparency = 1, Parent = self.screenGui,
-		})
-		self:Create("UIListLayout", {
-			FillDirection = Enum.FillDirection.Vertical,
-			VerticalAlignment = Enum.VerticalAlignment.Bottom,
-			HorizontalAlignment = Enum.HorizontalAlignment.Center,
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			Padding = UDim.new(0, 6), Parent = self._notifications,
-		})
+	if not self._notifQueue then
+		self._notifQueue = NotificationQueue.new(self)
 	end
-	local notif = self:Create("Frame", {
-		Size = UDim2.new(1, 0, 0, 52), BackgroundColor3 = self.theme.ElementBackground,
-		BorderSizePixel = 0, BackgroundTransparency = 0.05, Parent = self._notifications,
-	})
-	self:Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = notif })
-	self:Create("UIStroke", { Color = self.theme.ElementStroke, Transparency = 0.6, Parent = notif })
-	self:Create("UIPadding", {
-		PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14),
-		PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8), Parent = notif,
-	})
-	if properties.title then
-		self:Create("TextLabel", {
-			Text = properties.title, FontFace = self.theme.TitleFont,
-			Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1,
-			TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left,
-			TextColor3 = self.theme.TitlingColor,
-			TextTruncate = Enum.TextTruncate.AtEnd, Parent = notif,
-		})
-	end
-	if properties.content then
-		self:Create("TextLabel", {
-			Text = properties.content, FontFace = self.theme.Font,
-			Size = UDim2.new(1, 0, 0, 12), Position = UDim2.new(0, 0, 0, 20),
-			BackgroundTransparency = 1, TextSize = 11,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextColor3 = self.theme.PlaceholderColor,
-			TextTruncate = Enum.TextTruncate.AtEnd, Parent = notif,
-		})
-	end
-	notif.BackgroundTransparency = 1
-	Utility.Tween(notif, Utility.TweenInfo(0.3), { BackgroundTransparency = 0.05 })
-	task.delay(duration, function()
-		Utility.Tween(notif, Utility.TweenInfo(0.3), { BackgroundTransparency = 1 })
-		task.wait(0.3); notif:Destroy()
-	end)
+	return self._notifQueue:Push(properties)
 end
 
 function Window:_registerControl(control)
@@ -4914,160 +5012,12 @@ AnimationPresets.GlowPulse = {
 }
 
 -- ============================================================================
--- ENHANCED WINDOW FEATURES (MINIMIZE, CLOSE, MAXIMIZE)
+-- ENHANCED WINDOW FEATURES
 -- ============================================================================
--- These are injected into the existing Window class via patching
-local _originalWindowBuild = Window._buildTopbar
-
-function Window:_buildTopbar()
-	_originalWindowBuild(self)
-
-	self.closeButton = self:Create("Frame", {
-		Size = UDim2.fromOffset(24, 24),
-		BackgroundColor3 = Color3.fromRGB(200, 60, 60),
-		BorderSizePixel = 0,
-		Parent = self.actionContainer,
-	})
-	self:Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = self.closeButton })
-	local closeIcon = self:Create("Frame", {
-		Size = UDim2.fromOffset(8, 2),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundColor3 = Color3.fromRGB(80, 20, 20),
-		BorderSizePixel = 0,
-		Parent = self.closeButton,
-	})
-	self:Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = closeIcon })
-	local closeIcon2 = self:Create("Frame", {
-		Size = UDim2.fromOffset(2, 8),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundColor3 = Color3.fromRGB(80, 20, 20),
-		BorderSizePixel = 0,
-		Rotation = 0,
-		Parent = self.closeButton,
-	})
-	self:Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = closeIcon2 })
-	local closeBtn = self:Create("TextButton", {
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Text = "",
-		ZIndex = 15,
-		Parent = self.closeButton,
-	})
-	self:Connect(closeBtn.MouseButton1Click, function()
-		self:Unload()
-	end)
-	self:Connect(self.closeButton.MouseEnter, function()
-		Utility.Tween(self.closeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(220, 70, 70) })
-		Utility.Tween(closeIcon, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(255, 255, 255) })
-		Utility.Tween(closeIcon2, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(255, 255, 255) })
-	end)
-	self:Connect(self.closeButton.MouseLeave, function()
-		Utility.Tween(self.closeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(200, 60, 60) })
-		Utility.Tween(closeIcon, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(80, 20, 20) })
-		Utility.Tween(closeIcon2, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(80, 20, 20) })
-	end)
-
-	self.minimizeButton = self:Create("Frame", {
-		Size = UDim2.fromOffset(24, 24),
-		BackgroundColor3 = Color3.fromRGB(220, 180, 50),
-		BorderSizePixel = 0,
-		LayoutOrder = -1,
-		Parent = self.actionContainer,
-	})
-	self:Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = self.minimizeButton })
-	local minBar = self:Create("Frame", {
-		Size = UDim2.fromOffset(8, 2),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundColor3 = Color3.fromRGB(100, 80, 20),
-		BorderSizePixel = 0,
-		Parent = self.minimizeButton,
-	})
-	self:Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = minBar })
-	local minBtn = self:Create("TextButton", {
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Text = "",
-		ZIndex = 15,
-		Parent = self.minimizeButton,
-	})
-	self:Connect(minBtn.MouseButton1Click, function()
-		self:Hide()
-	end)
-	self:Connect(self.minimizeButton.MouseEnter, function()
-		Utility.Tween(self.minimizeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(240, 200, 60) })
-		Utility.Tween(minBar, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(255, 255, 255) })
-	end)
-	self:Connect(self.minimizeButton.MouseLeave, function()
-		Utility.Tween(self.minimizeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(220, 180, 50) })
-		Utility.Tween(minBar, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(100, 80, 20) })
-	end)
-
-	self.maximizeButton = self:Create("Frame", {
-		Size = UDim2.fromOffset(24, 24),
-		BackgroundColor3 = Color3.fromRGB(60, 180, 80),
-		BorderSizePixel = 0,
-		LayoutOrder = -2,
-		Parent = self.actionContainer,
-	})
-	self:Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = self.maximizeButton })
-	local maxIcon = self:Create("Frame", {
-		Size = UDim2.fromOffset(8, 8),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundColor3 = Color3.fromRGB(20, 80, 30),
-		BorderSizePixel = 0,
-		Parent = self.maximizeButton,
-	})
-	self:Create("UICorner", { CornerRadius = UDim.new(0, 2), Parent = maxIcon })
-	self:Create("UIStroke", { Color = Color3.fromRGB(20, 80, 30), Thickness = 1, Parent = maxIcon })
-	local maxBtn = self:Create("TextButton", {
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Text = "",
-		ZIndex = 15,
-		Parent = self.maximizeButton,
-	})
-	self._maximized = false
-	self._preMaxSize = nil
-	self:Connect(maxBtn.MouseButton1Click, function()
-		self._maximized = not self._maximized
-		if self._maximized then
-			self._preMaxSize = self.main.Size
-			Utility.Tween(self.main, Utility.TweenInfo(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
-				Size = UDim2.new(0.8, 0, 0.85, 0),
-				Position = UDim2.new(0.5, 0, 0.5, 0),
-			})
-		else
-			Utility.Tween(self.main, Utility.TweenInfo(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
-				Size = self._preMaxSize or UDim2.fromOffset(520, 460),
-				Position = UDim2.new(0.5, 0, 0.5, 0),
-			})
-		end
-	end)
-	self:Connect(self.maximizeButton.MouseEnter, function()
-		Utility.Tween(self.maximizeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(70, 200, 90) })
-		Utility.Tween(maxIcon, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(255, 255, 255) })
-	end)
-	self:Connect(self.maximizeButton.MouseLeave, function()
-		Utility.Tween(self.maximizeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(60, 180, 80) })
-		Utility.Tween(maxIcon, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(20, 80, 30) })
-	end)
-end
 
 -- ============================================================================
--- WINDOW ENHANCED NOTIFICATION (override with queue)
+-- ENHANCED WINDOW FEATURES
 -- ============================================================================
-local _originalNotify = Window.Notify
-
-function Window:Notify(properties)
-	if not self._notifQueue then
-		self._notifQueue = NotificationQueue.new(self)
-	end
-	return self._notifQueue:Push(properties)
-end
 
 -- ============================================================================
 -- TAB ENHANCED: CREATE LABEL (alias for paragraph short form)

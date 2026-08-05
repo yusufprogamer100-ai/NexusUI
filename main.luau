@@ -76,6 +76,780 @@ function Utility.TextWidth(font, size, text)
 	return TextService:GetTextSize(text, size, font, Vector2.new(9999, 9999)).X
 end
 
+function Utility.DeepClone(original)
+	local clone = {}
+	for key, value in original do
+		if typeof(value) == "table" then
+			clone[key] = Utility.DeepClone(value)
+		else
+			clone[key] = value
+		end
+	end
+	return clone
+end
+
+function Utility.MergeTables(base, override)
+	local result = Utility.DeepClone(base)
+	for key, value in override do
+		if typeof(value) == "table" and typeof(result[key]) == "table" then
+			result[key] = Utility.MergeTables(result[key], value)
+		else
+			result[key] = value
+		end
+	end
+	return result
+end
+
+function Utility.FormatNumber(n)
+	if n >= 1e9 then return string.format("%.1fB", n / 1e9)
+	elseif n >= 1e6 then return string.format("%.1fM", n / 1e6)
+	elseif n >= 1e3 then return string.format("%.1fK", n / 1e3)
+	else return tostring(n) end
+end
+
+function Utility.ClampVector2(v, min, max)
+	return Vector2.new(
+		math.clamp(v.X, min.X, max.X),
+		math.clamp(v.Y, min.Y, max.Y)
+	)
+end
+
+function Utility.Lerp(a, b, t)
+	return a + (b - a) * math.clamp(t, 0, 1)
+end
+
+function Utility.InverseLerp(a, b, v)
+	if b - a == 0 then return 0 end
+	return math.clamp((v - a) / (b - a), 0, 1)
+end
+
+function Utility.Remap(value, fromMin, fromMax, toMin, toMax)
+	local t = Utility.InverseLerp(fromMin, fromMax, value)
+	return Utility.Lerp(toMin, toMax, t)
+end
+
+function Utility.RoundTo(value, decimals)
+	local mult = 10 ^ (decimals or 0)
+	return math.floor(value * mult + 0.5) / mult
+end
+
+function Utility.GenerateUID()
+	return HttpService:GenerateGUID(false)
+end
+
+function Utility.Wait(seconds)
+	task.wait(seconds or 0)
+end
+
+function Utility.SafeCall(fn, ...)
+	local success, result = pcall(fn, ...)
+	if success then return result end
+	warn("[NexusUI] SafeCall error:", result)
+	return nil
+end
+
+function Utility.FadeInstance(instance, duration, targetTransparency, properties)
+	properties = properties or {}
+	local info = TweenInfo.new(duration or 0.3, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
+	local goals = { BackgroundTransparency = targetTransparency }
+	for prop, val in properties do goals[prop] = val end
+	return Utility.Tween(instance, info, goals)
+end
+
+function Utility.SlideInstance(instance, duration, targetPosition)
+	local info = TweenInfo.new(duration or 0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
+	return Utility.Tween(instance, info, { Position = targetPosition })
+end
+
+function Utility.ScaleInstance(instance, duration, targetSize)
+	local info = TweenInfo.new(duration or 0.3, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
+	return Utility.Tween(instance, info, { Size = targetSize })
+end
+
+function Utility.ColorLerp(colorA, colorB, t)
+	t = math.clamp(t, 0, 1)
+	return Color3.new(
+		colorA.R + (colorB.R - colorA.R) * t,
+		colorA.G + (colorB.G - colorA.G) * t,
+		colorA.B + (colorB.B - colorA.B) * t
+	)
+end
+
+function Utility.GetRelativePosition(instance, anchor)
+	anchor = anchor or Vector2.new(0.5, 0.5)
+	local absPos = instance.AbsolutePosition
+	local absSize = instance.AbsoluteSize
+	return absPos + absSize * anchor
+end
+
+function Utility.IsMouseOver(instance)
+	local mouse = UserInputService:GetMouseLocation()
+	local absPos = instance.AbsolutePosition
+	local absSize = instance.AbsoluteSize
+	return mouse.X >= absPos.X and mouse.X <= absPos.X + absSize.X
+		and mouse.Y >= absPos.Y and mouse.Y <= absPos.Y + absSize.Y
+end
+
+function Utility.GetCorners(instance)
+	local pos = instance.AbsolutePosition
+	local size = instance.AbsoluteSize
+	return {
+		TopLeft = pos,
+		TopRight = pos + Vector2.new(size.X, 0),
+		BottomLeft = pos + Vector2.new(0, size.Y),
+		BottomRight = pos + size,
+		Center = pos + size * 0.5,
+	}
+end
+
+function Utility.AnimateSequence(instances, delay, duration, fromProps, toProps)
+	for i, instance in instances do
+		task.delay(delay * (i - 1), function()
+			local info = TweenInfo.new(duration, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out)
+			Utility.Tween(instance, info, toProps)
+		end)
+	end
+end
+
+function Utility.StaggerReveal(instances, perElementDelay, duration, fromProps, toProps)
+	for i, instance in instances do
+		task.delay(perElementDelay * (i - 1), function()
+			Utility.AnimateSequence({ instance }, 0, duration, fromProps, toProps)
+		end)
+	end
+end
+
+function Utility.BounceEffect(instance, scale, duration)
+	scale = scale or 1.1
+	duration = duration or 0.3
+	local originalSize = instance.Size
+	Utility.Tween(instance, TweenInfo.new(duration * 0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Size = UDim2.new(originalSize.X.Scale, originalSize.X.Offset * scale, originalSize.Y.Scale, originalSize.Y.Offset * scale),
+	})
+	task.delay(duration * 0.4, function()
+		Utility.Tween(instance, TweenInfo.new(duration * 0.6, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+			Size = originalSize,
+		})
+	end)
+end
+
+function Utility.PulseEffect(instance, property, from, to, duration)
+	duration = duration or 0.5
+	Utility.Tween(instance, TweenInfo.new(duration * 0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), { [property] = to })
+	task.delay(duration * 0.5, function()
+		Utility.Tween(instance, TweenInfo.new(duration * 0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), { [property] = from })
+	end)
+end
+
+function Utility.ShakeEffect(instance, intensity, duration, callback)
+	intensity = intensity or 4
+	duration = duration or 0.3
+	local originalPos = instance.Position
+	local steps = math.floor(duration / 0.03)
+	for i = 1, steps do
+		task.delay(0.03 * (i - 1), function()
+			local offsetX = (math.random() - 0.5) * intensity * 2
+			local offsetY = (math.random() - 0.5) * intensity * 2
+			instance.Position = UDim2.new(originalPos.X.Scale, originalPos.X.Offset + offsetX, originalPos.Y.Scale, originalPos.Y.Offset + offsetY)
+		end)
+	end
+	task.delay(duration, function()
+		instance.Position = originalPos
+		if callback then callback() end
+	end)
+end
+
+function Utility.FlashEffect(instance, color, duration)
+	duration = duration or 0.3
+	local originalColor = instance.BackgroundColor3
+	Utility.Tween(instance, TweenInfo.new(duration * 0.3, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), { BackgroundColor3 = color })
+	task.delay(duration * 0.3, function()
+		Utility.Tween(instance, TweenInfo.new(duration * 0.7, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), { BackgroundColor3 = originalColor })
+	end)
+end
+
+function Utility.GradientShift(gradient, duration, newColor)
+	duration = duration or 0.5
+	Utility.Tween(gradient, TweenInfo.new(duration, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), { Color = newColor })
+end
+
+function Utility.RotateEffect(instance, angle, duration, easingStyle)
+	duration = duration or 0.5
+	easingStyle = easingStyle or Enum.EasingStyle.Exponential
+	Utility.Tween(instance, TweenInfo.new(duration, easingStyle, Enum.EasingDirection.Out), { Rotation = angle })
+end
+
+function Utility.Countdown(seconds, onTick, onComplete)
+	task.spawn(function()
+		for i = seconds, 0, -1 do
+			if onTick then onTick(i) end
+			task.wait(1)
+		end
+		if onComplete then onComplete() end
+	end)
+end
+
+function Utility.BatchDestroy(instances, delay)
+	delay = delay or 0.05
+	for i, instance in instances do
+		task.delay(delay * (i - 1), function()
+			if instance and instance.Parent then instance:Destroy() end
+		end)
+	end
+end
+
+function Utility.CreateGradient(stops, rotation)
+	local sequence = {}
+	for i, stop in stops do
+		table.insert(sequence, ColorSequenceKeypoint.new(stop[1], stop[2]))
+	end
+	return ColorSequence.new(sequence)
+end
+
+function Utility.CreateNumberGradient(stops, rotation)
+	local sequence = {}
+	for i, stop in stops do
+		table.insert(sequence, NumberSequenceKeypoint.new(stop[1], stop[2]))
+	end
+	return NumberSequence.new(sequence)
+end
+
+function Utility.TableShallowCopy(t)
+	local copy = {}
+	for k, v in t do copy[k] = v end
+	return copy
+end
+
+function Utility.TableFilter(t, predicate)
+	local result = {}
+	for _, v in t do
+		if predicate(v) then table.insert(result, v) end
+	end
+	return result
+end
+
+function Utility.TableMap(t, fn)
+	local result = {}
+	for i, v in t do result[i] = fn(v, i) end
+	return result
+end
+
+function Utility.TableFind(t, predicate)
+	for i, v in t do
+		if predicate(v, i) then return v, i end
+	end
+	return nil, nil
+end
+
+function Utility.TableEvery(t, predicate)
+	for i, v in t do
+		if not predicate(v, i) then return false end
+	end
+	return true
+end
+
+function Utility.TableSome(t, predicate)
+	for i, v in t do
+		if predicate(v, i) then return true end
+	end
+	return false
+end
+
+function Utility.TableFlatten(t)
+	local result = {}
+	for _, v in t do
+		if typeof(v) == "table" then
+			for _, item in Utility.TableFlatten(v) do table.insert(result, item) end
+		else
+			table.insert(result, v)
+		end
+	end
+	return result
+end
+
+function Utility.TableUnique(t)
+	local seen = {}
+	local result = {}
+	for _, v in t do
+		if not seen[v] then
+			seen[v] = true
+			table.insert(result, v)
+		end
+	end
+	return result
+end
+
+function Utility.TableChunk(t, size)
+	local chunks = {}
+	for i = 1, #t, size do
+		local chunk = {}
+		for j = i, math.min(i + size - 1, #t) do
+			table.insert(chunk, t[j])
+		end
+		table.insert(chunks, chunk)
+	end
+	return chunks
+end
+
+function Utility.TableRotate(t, direction)
+	direction = direction or 1
+	if direction > 0 then
+		local first = table.remove(t, 1)
+		table.insert(t, first)
+	else
+		local last = table.remove(t)
+		table.insert(t, 1, last)
+	end
+	return t
+end
+
+function Utility.TableMin(t, selector)
+	selector = selector or function(v) return v end
+	local minVal, minItem = math.huge, nil
+	for _, v in t do
+		local val = selector(v)
+		if val < minVal then minVal = val; minItem = v end
+	end
+	return minItem, minVal
+end
+
+function Utility.TableMax(t, selector)
+	selector = selector or function(v) return v end
+	local maxVal, maxItem = -math.huge, nil
+	for _, v in t do
+		local val = selector(v)
+		if val > maxVal then maxVal = val; maxItem = v end
+	end
+	return maxItem, maxVal
+end
+
+function Utility.TableSum(t, selector)
+	selector = selector or function(v) return v end
+	local sum = 0
+	for _, v in t do sum += selector(v) end
+	return sum
+end
+
+function Utility.TableAverage(t, selector)
+	selector = selector or function(v) return v end
+	if #t == 0 then return 0 end
+	return Utility.TableSum(t, selector) / #t
+end
+
+function Utility.TableGroupBy(t, keyFn)
+	local groups = {}
+	for _, v in t do
+		local key = keyFn(v)
+		if not groups[key] then groups[key] = {} end
+		table.insert(groups[key], v)
+	end
+	return groups
+end
+
+function Utility.TableSortByKey(t, key, descending)
+	table.sort(t, function(a, b)
+		if descending then return a[key] > b[key]
+		else return a[key] < b[key] end
+	end)
+	return t
+end
+
+function Utility.TableReverse(t)
+	local reversed = {}
+	for i = #t, 1, -1 do table.insert(reversed, t[i]) end
+	return reversed
+end
+
+function Utility.TableZip(...)
+	local tables = { ... }
+	local length = math.max(Utility.TableMap(tables, function(t) return #t end))
+	local result = {}
+	for i = 1, length do
+		local row = {}
+		for _, t in tables do row[#row + 1] = t[i] end
+		result[#result + 1] = row
+	end
+	return result
+end
+
+function Utility.TableUnzip(t)
+	local cols = {}
+	for _, row in t do
+		for i, val in row do
+			if not cols[i] then cols[i] = {} end
+			cols[i][#cols[i] + 1] = val
+		end
+	end
+	return cols
+end
+
+function Utility.TablePick(t, keys)
+	local result = {}
+	for _, key in keys do result[key] = t[key] end
+	return result
+end
+
+function Utility.TableOmit(t, keys)
+	local result = {}
+	local omitSet = {}
+	for _, key in keys do omitSet[key] = true end
+	for k, v in t do
+		if not omitSet[k] then result[k] = v end
+	end
+	return result
+end
+
+function Utility.TableIsEmpty(t)
+	return next(t) == nil
+end
+
+function Utility.TableSize(t)
+	local count = 0
+	for _ in t do count += 1 end
+	return count
+end
+
+function Utility.TableKeys(t)
+	local keys = {}
+	for k in t do keys[#keys + 1] = k end
+	return keys
+end
+
+function Utility.TableValues(t)
+	local values = {}
+	for _, v in t do values[#values + 1] = v end
+	return values
+end
+
+function Utility.TableContains(t, value)
+	for _, v in t do
+		if v == value then return true end
+	end
+	return false
+end
+
+function Utility.TableIndexOf(t, value)
+	for i, v in t do
+		if v == value then return i end
+	end
+	return nil
+end
+
+function Utility.TableRemoveValue(t, value)
+	local idx = Utility.TableIndexOf(t, value)
+	if idx then table.remove(t, idx) end
+	return idx
+end
+
+function Utility.TableInsertUnique(t, value)
+	if not Utility.TableContains(t, value) then
+		table.insert(t, value)
+		return true
+	end
+	return false
+end
+
+function Utility.TableShuffle(t)
+	local shuffled = Utility.TableShallowCopy(t)
+	for i = #shuffled, 2, -1 do
+		local j = math.random(1, i)
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+	end
+	return shuffled
+end
+
+function Utility.TableSample(t, n)
+	n = n or 1
+	local shuffled = Utility.TableShuffle(t)
+	local sample = {}
+	for i = 1, math.min(n, #shuffled) do sample[i] = shuffled[i] end
+	return sample
+end
+
+function Utility.TableFlattenDeep(t)
+	local result = {}
+	local function recurse(arr)
+		for _, v in arr do
+			if typeof(v) == "table" then recurse(v)
+			else result[#result + 1] = v end
+		end
+	end
+	recurse(t)
+	return result
+end
+
+function Utility.TableCompact(t)
+	local result = {}
+	for _, v in t do
+		if v ~= nil and v ~= false and v ~= "" then
+			result[#result + 1] = v
+		end
+	end
+	return result
+end
+
+function Utility.TablePluck(t, key)
+	return Utility.TableMap(t, function(item) return item[key] end)
+end
+
+function Utility.TableCount(t, predicate)
+	if not predicate then return #t end
+	local count = 0
+	for _, v in t do
+		if predicate(v) then count += 1 end
+	end
+	return count
+end
+
+function Utility.TableDistinct(t, selector)
+	selector = selector or function(v) return v end
+	local seen = {}
+	local result = {}
+	for _, v in t do
+		local key = selector(v)
+		if not seen[key] then
+			seen[key] = true
+			result[#result + 1] = v
+		end
+	end
+	return result
+end
+
+function Utility.TableMapKeys(t, fn)
+	local result = {}
+	for k, v in t do result[fn(k, v)] = v end
+	return result
+end
+
+function Utility.TableMapValues(t, fn)
+	local result = {}
+	for k, v in t do result[k] = fn(v, k) end
+	return result
+end
+
+function Utility.TableFlatMap(t, fn)
+	local result = {}
+	for i, v in t do
+		local mapped = fn(v, i)
+		if typeof(mapped) == "table" then
+			for _, item in mapped do result[#result + 1] = item end
+		else
+			result[#result + 1] = mapped
+		end
+	end
+	return result
+end
+
+function Utility.TablePartition(t, predicate)
+	local pass, fail = {}, {}
+	for _, v in t do
+		if predicate(v) then pass[#pass + 1] = v
+		else fail[#fail + 1] = v end
+	end
+	return pass, fail
+end
+
+function Utility.TableWindow(t, start, finish)
+	local result = {}
+	for i = start, finish do result[#result + 1] = t[i] end
+	return result
+end
+
+function Utility.TableSlidingWindow(t, size)
+	local windows = {}
+	for i = 1, math.max(1, #t - size + 1) do
+		windows[#windows + 1] = Utility.TableWindow(t, i, math.min(i + size - 1, #t))
+	end
+	return windows
+end
+
+function Utility.TableScan(t, fn)
+	for i, v in t do fn(v, i) end
+	return t
+end
+
+function Utility.TableInject(t, initial, fn)
+	local accumulator = initial
+	for i, v in t do accumulator = fn(accumulator, v, i) end
+	return accumulator
+end
+
+function Utility.TableJoin(...)
+	local result = {}
+	for _, t in { ... } do
+		for k, v in t do result[k] = v end
+	end
+	return result
+end
+
+function Utility.TableMerge(...)
+	local result = {}
+	for _, t in { ... } do
+		for i, v in t do result[#result + 1] = v end
+	end
+	return result
+end
+
+function Utility.TableFill(n, value)
+	local result = {}
+	for i = 1, n do result[i] = value end
+	return result
+end
+
+function Utility.TableRange(start, finish, step)
+	step = step or 1
+	local result = {}
+	for i = start, finish, step do result[#result + 1] = i end
+	return result
+end
+
+function Utility.TableRepeatN(t, n)
+	local result = {}
+	for i = 1, n do
+		for _, v in t do result[#result + 1] = v end
+	end
+	return result
+end
+
+function Utility.TableInterleave(...)
+	local tables = { ... }
+	local result = {}
+	local maxLen = 0
+	for _, t in tables do maxLen = math.max(maxLen, #t) end
+	for i = 1, maxLen do
+		for _, t in tables do
+			if t[i] then result[#result + 1] = t[i] end
+		end
+	end
+	return result
+end
+
+function Utility.TableWithoutIndex(t, index)
+	local result = {}
+	for i, v in t do
+		if i ~= index then result[#result + 1] = v end
+	end
+	return result
+end
+
+function Utility.TableWithoutValue(t, value)
+	local result = {}
+	for _, v in t do
+		if v ~= value then result[#result + 1] = v end
+	end
+	return result
+end
+
+function Utility.TableFirst(t, predicate)
+	for _, v in t do
+		if predicate(v) then return v end
+	end
+	return nil
+end
+
+function Utility.TableLast(t, predicate)
+	local last = nil
+	for _, v in t do
+		if not predicate or predicate(v) then last = v end
+	end
+	return last
+end
+
+function Utility.TableNth(t, n)
+	return t[n]
+end
+
+function Utility.TableHead(t, n)
+	n = n or 1
+	return Utility.TableWindow(t, 1, math.min(n, #t))
+end
+
+function Utility.TableTail(t, n)
+	n = n or 1
+	return Utility.TableWindow(t, math.max(1, #t - n + 1), #t)
+end
+
+function Utility.TableInit(t)
+	return Utility.TableWithoutIndex(t, #t)
+end
+
+function Utility.TableLastN(t, n)
+	return Utility.TableTail(t, n)
+end
+
+function Utility.TableTakeWhile(t, predicate)
+	local result = {}
+	for _, v in t do
+		if predicate(v) then result[#result + 1] = v
+		else break end
+	end
+	return result
+end
+
+function Utility.TableDropWhile(t, predicate)
+	local result = {}
+	local dropping = true
+	for _, v in t do
+		if dropping and predicate(v) then continue end
+		dropping = false
+		result[#result + 1] = v
+	end
+	return result
+end
+
+function Utility.TableSplitAt(t, index)
+	return Utility.TableWindow(t, 1, index - 1), Utility.TableWindow(t, index, #t)
+end
+
+function Utility.TableSpan(t, predicate)
+	local pass = {}
+	local fail = {}
+	local inPass = true
+	for _, v in t do
+		if inPass and predicate(v) then pass[#pass + 1] = v
+		else inPass = false; fail[#fail + 1] = v end
+	end
+	return pass, fail
+end
+
+function Utility.TableBreak(t, predicate)
+	for i, v in t do
+		if predicate(v) then return Utility.TableSplitAt(t, i) end
+	end
+	return t, {}
+end
+
+function Utility.TableGroupConsecutive(t, keyFn)
+	local groups = {}
+	local currentKey = nil
+	local currentGroup = {}
+	for _, v in t do
+		local key = keyFn(v)
+		if key ~= currentKey then
+			if currentGroup then groups[#groups + 1] = currentGroup end
+			currentGroup = {}
+			currentKey = key
+		end
+		currentGroup[#currentGroup + 1] = v
+	end
+	if currentGroup then groups[#groups + 1] = currentGroup end
+	return groups
+end
+
+function Utility.TableSubsequence(t, indices)
+	local result = {}
+	for _, i in indices do result[#result + 1] = t[i] end
+	return result
+end
+
+function Table.clone(t)
+	local clone = {}
+	for k, v in t do clone[k] = v end
+	return clone
+end
+
+if not table.clone then table.clone = Table.clone end
+
 -- ============================================================================
 -- THEMES
 -- ============================================================================
@@ -125,6 +899,294 @@ Themes.Default = {
 	ErrorColor = Color3.fromRGB(200, 60, 60),
 	ErrorStrokeColor = Color3.fromRGB(240, 80, 80),
 	SuccessColor = Color3.fromRGB(60, 180, 80),
+	Font = Font.new("rbxasset://fonts/families/GothamSSym.json", Enum.FontWeight.Medium),
+	TitleFont = Font.new("rbxasset://fonts/families/GothamSSym.json", Enum.FontWeight.Bold),
+}
+
+Themes.Neon = {
+	Name = "Neon",
+	WindowBackground = Color3.fromRGB(12, 12, 18),
+	WindowStroke = Color3.fromRGB(0, 200, 255),
+	WindowStrokeTransparency = 0.5,
+	CornerRoundness = UDim.new(0, 14),
+	TabBarBackground = Color3.fromRGB(8, 8, 14),
+	TabBackground = Color3.fromRGB(18, 18, 28),
+	TabBackgroundHover = Color3.fromRGB(25, 25, 40),
+	TabBackgroundSelected = Color3.fromRGB(22, 22, 38),
+	TabStroke = Color3.fromRGB(0, 150, 200),
+	TabStrokeSelected = Color3.fromRGB(0, 220, 255),
+	TabTextColor = Color3.fromRGB(100, 140, 170),
+	TabTextColorSelected = Color3.fromRGB(0, 240, 255),
+	ElementBackground = Color3.fromRGB(18, 18, 28),
+	ElementStroke = Color3.fromRGB(0, 120, 160),
+	ElementStrokeTransparency = 0.6,
+	ElementStrokeHover = Color3.fromRGB(0, 200, 255),
+	ElementStrokeHoverTransparency = 0.2,
+	ElementTransparency = 0,
+	ContentColor = Color3.fromRGB(180, 220, 240),
+	ElementTextHoverColor = Color3.fromRGB(0, 255, 255),
+	ElementGradient = ColorSequence.new(Color3.fromRGB(20, 20, 32), Color3.fromRGB(15, 15, 25)),
+	AccentColor = Color3.fromRGB(0, 180, 255),
+	AccentStroke = Color3.fromRGB(0, 220, 255),
+	AccentGlow = 0.8,
+	ToggleTrack = Color3.fromRGB(30, 30, 48),
+	ToggleTrackTransparency = 0,
+	ToggleKnobOff = Color3.fromRGB(80, 100, 120),
+	ToggleKnobOffTransparency = 0.2,
+	SliderBackground = Color3.fromRGB(25, 25, 40),
+	SliderBackgroundHover = Color3.fromRGB(30, 30, 48),
+	SliderProgress = ColorSequence.new(Color3.fromRGB(0, 150, 220), Color3.fromRGB(0, 200, 255)),
+	SliderHandle = Color3.fromRGB(200, 240, 255),
+	SliderStroke = Color3.fromRGB(0, 180, 255),
+	DropdownHighlight = Color3.fromRGB(20, 20, 34),
+	FieldBackground = Color3.fromRGB(12, 12, 20),
+	FieldStroke = Color3.fromRGB(0, 100, 140),
+	FieldStrokeFocus = Color3.fromRGB(0, 200, 255),
+	TitlingColor = Color3.fromRGB(0, 240, 255),
+	PlaceholderColor = Color3.fromRGB(70, 100, 130),
+	ErrorColor = Color3.fromRGB(200, 40, 60),
+	ErrorStrokeColor = Color3.fromRGB(255, 60, 80),
+	SuccessColor = Color3.fromRGB(0, 200, 100),
+	Font = Font.new("rbxasset://fonts/families/GothamSSym.json", Enum.FontWeight.Medium),
+	TitleFont = Font.new("rbxasset://fonts/families/GothamSSym.json", Enum.FontWeight.Bold),
+}
+
+Themes.Pastel = {
+	Name = "Pastel",
+	WindowBackground = Color3.fromRGB(245, 240, 248),
+	WindowStroke = Color3.fromRGB(210, 195, 215),
+	WindowStrokeTransparency = 0.3,
+	CornerRoundness = UDim.new(0, 16),
+	TabBarBackground = Color3.fromRGB(235, 228, 240),
+	TabBackground = Color3.fromRGB(225, 218, 232),
+	TabBackgroundHover = Color3.fromRGB(215, 208, 225),
+	TabBackgroundSelected = Color3.fromRGB(205, 195, 218),
+	TabStroke = Color3.fromRGB(190, 175, 200),
+	TabStrokeSelected = Color3.fromRGB(160, 120, 180),
+	TabTextColor = Color3.fromRGB(120, 100, 130),
+	TabTextColorSelected = Color3.fromRGB(80, 50, 100),
+	ElementBackground = Color3.fromRGB(230, 222, 238),
+	ElementStroke = Color3.fromRGB(200, 188, 210),
+	ElementStrokeTransparency = 0.5,
+	ElementStrokeHover = Color3.fromRGB(160, 120, 180),
+	ElementStrokeHoverTransparency = 0.25,
+	ElementTransparency = 0,
+	ContentColor = Color3.fromRGB(60, 45, 70),
+	ElementTextHoverColor = Color3.fromRGB(40, 25, 55),
+	ElementGradient = ColorSequence.new(Color3.fromRGB(232, 225, 242), Color3.fromRGB(222, 215, 235)),
+	AccentColor = Color3.fromRGB(150, 100, 180),
+	AccentStroke = Color3.fromRGB(170, 120, 200),
+	AccentGlow = 0.75,
+	ToggleTrack = Color3.fromRGB(200, 190, 215),
+	ToggleTrackTransparency = 0,
+	ToggleKnobOff = Color3.fromRGB(170, 158, 185),
+	ToggleKnobOffTransparency = 0,
+	SliderBackground = Color3.fromRGB(210, 200, 222),
+	SliderBackgroundHover = Color3.fromRGB(200, 190, 215),
+	SliderProgress = ColorSequence.new(Color3.fromRGB(140, 90, 170), Color3.fromRGB(165, 115, 195)),
+	SliderHandle = Color3.fromRGB(255, 255, 255),
+	SliderStroke = Color3.fromRGB(150, 100, 180),
+	DropdownHighlight = Color3.fromRGB(215, 205, 228),
+	FieldBackground = Color3.fromRGB(248, 244, 252),
+	FieldStroke = Color3.fromRGB(200, 188, 210),
+	FieldStrokeFocus = Color3.fromRGB(150, 100, 180),
+	TitlingColor = Color3.fromRGB(60, 40, 75),
+	PlaceholderColor = Color3.fromRGB(145, 130, 155),
+	ErrorColor = Color3.fromRGB(210, 80, 90),
+	ErrorStrokeColor = Color3.fromRGB(230, 95, 105),
+	SuccessColor = Color3.fromRGB(80, 180, 110),
+	Font = Font.new("rbxasset://fonts/families/GothamSSym.json", Enum.FontWeight.Medium),
+	TitleFont = Font.new("rbxasset://fonts/families/GothamSSym.json", Enum.FontWeight.Bold),
+}
+
+Themes.Midnight = {
+	Name = "Midnight",
+	WindowBackground = Color3.fromRGB(15, 15, 22),
+	WindowStroke = Color3.fromRGB(50, 45, 70),
+	WindowStrokeTransparency = 0.45,
+	CornerRoundness = UDim.new(0, 10),
+	TabBarBackground = Color3.fromRGB(10, 10, 16),
+	TabBackground = Color3.fromRGB(22, 22, 32),
+	TabBackgroundHover = Color3.fromRGB(30, 30, 42),
+	TabBackgroundSelected = Color3.fromRGB(28, 28, 45),
+	TabStroke = Color3.fromRGB(45, 40, 65),
+	TabStrokeSelected = Color3.fromRGB(100, 80, 160),
+	TabTextColor = Color3.fromRGB(110, 105, 140),
+	TabTextColorSelected = Color3.fromRGB(200, 190, 255),
+	ElementBackground = Color3.fromRGB(22, 22, 32),
+	ElementStroke = Color3.fromRGB(40, 36, 58),
+	ElementStrokeTransparency = 0.6,
+	ElementStrokeHover = Color3.fromRGB(90, 75, 150),
+	ElementStrokeHoverTransparency = 0.3,
+	ElementTransparency = 0,
+	ContentColor = Color3.fromRGB(175, 170, 200),
+	ElementTextHoverColor = Color3.fromRGB(220, 215, 255),
+	ElementGradient = ColorSequence.new(Color3.fromRGB(25, 25, 36), Color3.fromRGB(18, 18, 28)),
+	AccentColor = Color3.fromRGB(90, 70, 160),
+	AccentStroke = Color3.fromRGB(110, 90, 180),
+	AccentGlow = 0.7,
+	ToggleTrack = Color3.fromRGB(35, 32, 52),
+	ToggleTrackTransparency = 0,
+	ToggleKnobOff = Color3.fromRGB(95, 90, 120),
+	ToggleKnobOffTransparency = 0.2,
+	SliderBackground = Color3.fromRGB(28, 26, 42),
+	SliderBackgroundHover = Color3.fromRGB(35, 32, 52),
+	SliderProgress = ColorSequence.new(Color3.fromRGB(75, 60, 140), Color3.fromRGB(100, 85, 170)),
+	SliderHandle = Color3.fromRGB(220, 215, 255),
+	SliderStroke = Color3.fromRGB(90, 70, 160),
+	DropdownHighlight = Color3.fromRGB(26, 24, 38),
+	FieldBackground = Color3.fromRGB(12, 12, 18),
+	FieldStroke = Color3.fromRGB(36, 32, 54),
+	FieldStrokeFocus = Color3.fromRGB(90, 70, 160),
+	TitlingColor = Color3.fromRGB(200, 190, 255),
+	PlaceholderColor = Color3.fromRGB(85, 80, 110),
+	ErrorColor = Color3.fromRGB(190, 50, 65),
+	ErrorStrokeColor = Color3.fromRGB(220, 70, 85),
+	SuccessColor = Color3.fromRGB(50, 170, 85),
+	Font = Font.new("rbxasset://fonts/families/GothamSSym.json", Enum.FontWeight.Medium),
+	TitleFont = Font.new("rbxasset://fonts/families/GothamSSym.json", Enum.FontWeight.Bold),
+}
+
+Themes.Forest = {
+	Name = "Forest",
+	WindowBackground = Color3.fromRGB(18, 24, 18),
+	WindowStroke = Color3.fromRGB(40, 70, 40),
+	WindowStrokeTransparency = 0.45,
+	CornerRoundness = UDim.new(0, 12),
+	TabBarBackground = Color3.fromRGB(14, 20, 14),
+	TabBackground = Color3.fromRGB(24, 34, 24),
+	TabBackgroundHover = Color3.fromRGB(30, 42, 30),
+	TabBackgroundSelected = Color3.fromRGB(28, 40, 28),
+	TabStroke = Color3.fromRGB(50, 80, 50),
+	TabStrokeSelected = Color3.fromRGB(70, 140, 70),
+	TabTextColor = Color3.fromRGB(100, 130, 100),
+	TabTextColorSelected = Color3.fromRGB(150, 220, 150),
+	ElementBackground = Color3.fromRGB(24, 34, 24),
+	ElementStroke = Color3.fromRGB(45, 68, 45),
+	ElementStrokeTransparency = 0.6,
+	ElementStrokeHover = Color3.fromRGB(65, 130, 65),
+	ElementStrokeHoverTransparency = 0.25,
+	ElementTransparency = 0,
+	ContentColor = Color3.fromRGB(170, 200, 170),
+	ElementTextHoverColor = Color3.fromRGB(180, 240, 180),
+	ElementGradient = ColorSequence.new(Color3.fromRGB(26, 38, 26), Color3.fromRGB(20, 30, 20)),
+	AccentColor = Color3.fromRGB(60, 130, 60),
+	AccentStroke = Color3.fromRGB(80, 160, 80),
+	AccentGlow = 0.7,
+	ToggleTrack = Color3.fromRGB(35, 52, 35),
+	ToggleTrackTransparency = 0,
+	ToggleKnobOff = Color3.fromRGB(90, 110, 90),
+	ToggleKnobOffTransparency = 0.2,
+	SliderBackground = Color3.fromRGB(28, 42, 28),
+	SliderBackgroundHover = Color3.fromRGB(35, 52, 35),
+	SliderProgress = ColorSequence.new(Color3.fromRGB(50, 120, 50), Color3.fromRGB(70, 150, 70)),
+	SliderHandle = Color3.fromRGB(200, 230, 200),
+	SliderStroke = Color3.fromRGB(60, 130, 60),
+	DropdownHighlight = Color3.fromRGB(26, 38, 26),
+	FieldBackground = Color3.fromRGB(16, 22, 16),
+	FieldStroke = Color3.fromRGB(40, 60, 40),
+	FieldStrokeFocus = Color3.fromRGB(60, 130, 60),
+	TitlingColor = Color3.fromRGB(150, 220, 150),
+	PlaceholderColor = Color3.fromRGB(80, 105, 80),
+	ErrorColor = Color3.fromRGB(190, 55, 55),
+	ErrorStrokeColor = Color3.fromRGB(220, 75, 75),
+	SuccessColor = Color3.fromRGB(80, 190, 80),
+	Font = Font.new("rbxasset://fonts/families/GothamSSym.json", Enum.FontWeight.Medium),
+	TitleFont = Font.new("rbxasset://fonts/families/GothamSSym.json", Enum.FontWeight.Bold),
+}
+
+Themes.Sunset = {
+	Name = "Sunset",
+	WindowBackground = Color3.fromRGB(25, 18, 22),
+	WindowStroke = Color3.fromRGB(80, 45, 55),
+	WindowStrokeTransparency = 0.45,
+	CornerRoundness = UDim.new(0, 14),
+	TabBarBackground = Color3.fromRGB(18, 12, 16),
+	TabBackground = Color3.fromRGB(32, 22, 28),
+	TabBackgroundHover = Color3.fromRGB(42, 30, 38),
+	TabBackgroundSelected = Color3.fromRGB(38, 26, 34),
+	TabStroke = Color3.fromRGB(70, 40, 50),
+	TabStrokeSelected = Color3.fromRGB(200, 100, 80),
+	TabTextColor = Color3.fromRGB(140, 110, 120),
+	TabTextColorSelected = Color3.fromRGB(255, 180, 140),
+	ElementBackground = Color3.fromRGB(32, 22, 28),
+	ElementStroke = Color3.fromRGB(60, 38, 48),
+	ElementStrokeTransparency = 0.6,
+	ElementStrokeHover = Color3.fromRGB(180, 90, 70),
+	ElementStrokeHoverTransparency = 0.25,
+	ElementTransparency = 0,
+	ContentColor = Color3.fromRGB(220, 190, 200),
+	ElementTextHoverColor = Color3.fromRGB(255, 210, 180),
+	ElementGradient = ColorSequence.new(Color3.fromRGB(35, 24, 30), Color3.fromRGB(26, 18, 24)),
+	AccentColor = Color3.fromRGB(200, 100, 70),
+	AccentStroke = Color3.fromRGB(230, 120, 90),
+	AccentGlow = 0.75,
+	ToggleTrack = Color3.fromRGB(48, 32, 40),
+	ToggleTrackTransparency = 0,
+	ToggleKnobOff = Color3.fromRGB(120, 90, 100),
+	ToggleKnobOffTransparency = 0.2,
+	SliderBackground = Color3.fromRGB(38, 26, 34),
+	SliderBackgroundHover = Color3.fromRGB(48, 34, 42),
+	SliderProgress = ColorSequence.new(Color3.fromRGB(180, 85, 60), Color3.fromRGB(220, 110, 80)),
+	SliderHandle = Color3.fromRGB(255, 230, 220),
+	SliderStroke = Color3.fromRGB(200, 100, 70),
+	DropdownHighlight = Color3.fromRGB(35, 24, 30),
+	FieldBackground = Color3.fromRGB(22, 14, 18),
+	FieldStroke = Color3.fromRGB(52, 34, 44),
+	FieldStrokeFocus = Color3.fromRGB(200, 100, 70),
+	TitlingColor = Color3.fromRGB(255, 180, 140),
+	PlaceholderColor = Color3.fromRGB(110, 80, 90),
+	ErrorColor = Color3.fromRGB(220, 55, 60),
+	ErrorStrokeColor = Color3.fromRGB(245, 75, 80),
+	SuccessColor = Color3.fromRGB(80, 190, 100),
+	Font = Font.new("rbxasset://fonts/families/GothamSSym.json", Enum.FontWeight.Medium),
+	TitleFont = Font.new("rbxasset://fonts/families/GothamSSym.json", Enum.FontWeight.Bold),
+}
+
+Themes.Cyberpunk = {
+	Name = "Cyberpunk",
+	WindowBackground = Color3.fromRGB(10, 10, 15),
+	WindowStroke = Color3.fromRGB(255, 0, 100),
+	WindowStrokeTransparency = 0.6,
+	CornerRoundness = UDim.new(0, 4),
+	TabBarBackground = Color3.fromRGB(6, 6, 10),
+	TabBackground = Color3.fromRGB(16, 16, 24),
+	TabBackgroundHover = Color3.fromRGB(24, 24, 36),
+	TabBackgroundSelected = Color3.fromRGB(20, 20, 32),
+	TabStroke = Color3.fromRGB(200, 0, 80),
+	TabStrokeSelected = Color3.fromRGB(255, 0, 120),
+	TabTextColor = Color3.fromRGB(150, 80, 120),
+	TabTextColorSelected = Color3.fromRGB(255, 50, 150),
+	ElementBackground = Color3.fromRGB(16, 16, 24),
+	ElementStroke = Color3.fromRGB(180, 0, 70),
+	ElementStrokeTransparency = 0.65,
+	ElementStrokeHover = Color3.fromRGB(255, 0, 120),
+	ElementStrokeHoverTransparency = 0.2,
+	ElementTransparency = 0,
+	ContentColor = Color3.fromRGB(220, 180, 210),
+	ElementTextHoverColor = Color3.fromRGB(255, 100, 200),
+	ElementGradient = ColorSequence.new(Color3.fromRGB(18, 18, 28), Color3.fromRGB(12, 12, 20)),
+	AccentColor = Color3.fromRGB(255, 0, 100),
+	AccentStroke = Color3.fromRGB(255, 30, 130),
+	AccentGlow = 0.85,
+	ToggleTrack = Color3.fromRGB(30, 12, 22),
+	ToggleTrackTransparency = 0,
+	ToggleKnobOff = Color3.fromRGB(100, 50, 80),
+	ToggleKnobOffTransparency = 0.2,
+	SliderBackground = Color3.fromRGB(22, 12, 18),
+	SliderBackgroundHover = Color3.fromRGB(30, 18, 24),
+	SliderProgress = ColorSequence.new(Color3.fromRGB(220, 0, 90), Color3.fromRGB(255, 30, 120)),
+	SliderHandle = Color3.fromRGB(255, 200, 230),
+	SliderStroke = Color3.fromRGB(255, 0, 100),
+	DropdownHighlight = Color3.fromRGB(18, 18, 28),
+	FieldBackground = Color3.fromRGB(8, 8, 12),
+	FieldStroke = Color3.fromRGB(160, 0, 60),
+	FieldStrokeFocus = Color3.fromRGB(255, 0, 100),
+	TitlingColor = Color3.fromRGB(255, 50, 150),
+	PlaceholderColor = Color3.fromRGB(90, 40, 70),
+	ErrorColor = Color3.fromRGB(255, 50, 50),
+	ErrorStrokeColor = Color3.fromRGB(255, 80, 80),
+	SuccessColor = Color3.fromRGB(0, 255, 120),
 	Font = Font.new("rbxasset://fonts/families/GothamSSym.json", Enum.FontWeight.Medium),
 	TitleFont = Font.new("rbxasset://fonts/families/GothamSSym.json", Enum.FontWeight.Bold),
 }
@@ -1666,6 +2728,1107 @@ function Keybind:Set(value, skipCallback)
 end
 
 -- ============================================================================
+-- SEARCHABLE DROPDOWN COMPONENT
+-- ============================================================================
+local SearchableDropdown = {}
+SearchableDropdown.__index = SearchableDropdown
+SearchableDropdown.__type = "SearchableDropdown"
+
+function SearchableDropdown.new(tab, properties)
+	properties = if typeof(properties) == "table" then properties else {}
+	local self = setmetatable({
+		tab = tab, window = tab.window,
+		name = properties.name or properties.Name or "SearchDropdown",
+		icon = properties.icon or properties.Icon,
+		description = properties.description or properties.Description,
+		flag = properties.flag or properties.Flag or (not (properties.forgetState or tab.forgetState) and Utility.DeriveFlag(properties.name or "SearchDropdown") or nil),
+		forgetState = properties.forgetState or tab.forgetState,
+		callback = properties.callback or properties.Callback or function() end,
+		options = dedupStrings(properties.options or properties.Options or {}),
+		placeholderText = properties.placeholder or properties.Placeholder or "Search...",
+		value = properties.value or properties.Value or "",
+		_isOpen = false, _filteredOptions = {}, connections = {},
+	}, SearchableDropdown)
+	self._desiredValue = self.value
+	self.window:_registerControl(self)
+	self:_build()
+	table.insert(tab.elements, self)
+	if self.description then self:_buildDescription() end
+	return self
+end
+
+function SearchableDropdown:_build()
+	self.main = self.window:Create("Frame", {
+		Size = UDim2.new(1, -20, 0, 43), BorderSizePixel = 0,
+		Name = self.name, ClipsDescendants = true,
+		BackgroundTransparency = 1, Parent = self.tab.tabPage,
+	})
+	self.top = self.window:Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 43), Position = UDim2.fromScale(0, 0),
+		BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundTransparency = 1, ZIndex = 1, Parent = self.main,
+	})
+	self.stroke = self.window:Create("UIStroke", {
+		Transparency = 1, Parent = self.top,
+	}, { Color = "ElementStroke", Transparency = "ElementStrokeTransparency" })
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = self.top })
+	self.window:Create("UIGradient", { Rotation = 270, Parent = self.top }, { Color = "ElementGradient" })
+	self.hoverOverlay = self.window:CreateHoverOverlay(self.top)
+	self.flashTarget = self.top
+
+	local container = self.window:Create("Frame", {
+		BorderSizePixel = 0, Parent = self.top,
+		Size = UDim2.new(0, 170, 0, 16),
+		Position = UDim2.new(0, 18, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1, ZIndex = 5,
+	})
+	self.window:Create("UIListLayout", {
+		Padding = UDim.new(0, 5), FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		HorizontalAlignment = Enum.HorizontalAlignment.Left, Parent = container,
+	})
+
+	if self.icon then
+		self.iconLabel = self.window:Create("ImageLabel", {
+			Image = self.icon, Size = UDim2.fromOffset(16, 16),
+			BorderSizePixel = 0, BackgroundTransparency = 1,
+			ImageTransparency = 1, ZIndex = 5, Parent = container,
+		}, { ImageColor3 = "ContentColor" })
+	end
+
+	self.title = self.window:Create("TextLabel", {
+		Text = self.name, FontFace = self.window.theme.Font,
+		Size = UDim2.fromOffset(150, 16), BorderSizePixel = 0,
+		BackgroundTransparency = 1, TextSize = 14,
+		AutomaticSize = Enum.AutomaticSize.X,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextWrapped = true, TextTransparency = 1, ZIndex = 5,
+		TextColor3 = self.window.theme.ContentColor, Parent = container,
+	})
+
+	self.selectedLabel = self.window:Create("TextLabel", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -40, 0.5, 0),
+		Size = UDim2.fromOffset(160, 15), BorderSizePixel = 0,
+		BackgroundTransparency = 1, TextSize = 13,
+		FontFace = self.window.theme.Font,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		TextWrapped = true, TextTransparency = 1, ZIndex = 5,
+		TextColor3 = self.window.theme.PlaceholderColor, Parent = self.top,
+	})
+
+	self.chevron = self.window:Create("ImageLabel", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -16, 0.5, 0),
+		Size = UDim2.fromOffset(14, 14), BorderSizePixel = 0,
+		BackgroundTransparency = 1, Image = "rbxassetid://6031068420",
+		Rotation = 180, ImageTransparency = 1, ZIndex = 5, Parent = self.top,
+	}, { ImageColor3 = "ContentColor" })
+
+	self.interact = self.window:Create("TextButton", {
+		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 43),
+		Position = UDim2.fromScale(0, 0), BorderSizePixel = 0,
+		Text = "", TextTransparency = 1, ZIndex = 10,
+		AutoButtonColor = false, Parent = self.main,
+	})
+
+	self.panel = self.window:Create("Frame", {
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, 0, 1, 0),
+		Size = UDim2.new(1, 0, 1, -47), BorderSizePixel = 0,
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		ZIndex = 1, BackgroundTransparency = 1, Parent = self.main,
+	})
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = self.panel })
+	self.window:Create("UIStroke", { Transparency = 1, Parent = self.panel }, { Color = "ElementStroke", Transparency = "ElementStrokeTransparency" })
+	self.window:Create("UIGradient", { Rotation = 270, Parent = self.panel }, { Color = "ElementGradient" })
+
+	self.searchField = self.window:Create("Frame", {
+		Size = UDim2.new(1, -12, 0, 30), Position = UDim2.new(0, 6, 0, 4),
+		BorderSizePixel = 0, BackgroundColor3 = self.window.theme.FieldBackground,
+		ZIndex = 5, Parent = self.panel,
+	})
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = self.searchField })
+	self.window:Create("UIStroke", { Color = self.window.theme.FieldStroke, Transparency = 0.5, Parent = self.searchField })
+
+	self.searchIcon = self.window:Create("ImageLabel", {
+		Image = "rbxassetid://6031068420",
+		Size = UDim2.fromOffset(12, 12),
+		Position = UDim2.new(0, 8, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		BackgroundTransparency = 1,
+		ImageColor3 = self.window.theme.PlaceholderColor,
+		ZIndex = 6, Parent = self.searchField,
+	})
+
+	self.searchBox = self.window:Create("TextBox", {
+		Text = "", PlaceholderText = "Type to search...",
+		FontFace = self.window.theme.Font,
+		Size = UDim2.new(1, -30, 1, 0), Position = UDim2.new(0, 26, 0, 0),
+		BackgroundTransparency = 1, TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = self.window.theme.ContentColor,
+		PlaceholderColor3 = self.window.theme.PlaceholderColor,
+		ClearTextOnFocus = false, TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 6, Parent = self.searchField,
+	})
+
+	self.list = self.window:Create("ScrollingFrame", {
+		Active = true, Size = UDim2.new(1, 0, 1, -42),
+		Position = UDim2.new(0, 0, 0, 38), BorderSizePixel = 0,
+		BackgroundTransparency = 1, ClipsDescendants = true,
+		AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(),
+		ScrollBarThickness = 3, ScrollBarImageColor3 = Color3.fromRGB(60, 65, 90),
+		ScrollBarImageTransparency = 0.5,
+		ScrollingDirection = Enum.ScrollingDirection.Y, ZIndex = 1, Parent = self.panel,
+	})
+	self.window:Create("UIListLayout", {
+		Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center, Parent = self.list,
+	})
+	self.window:Create("UIPadding", {
+		PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4), Parent = self.list,
+	})
+
+	self._filteredOptions = {}
+	for _, opt in self.options do table.insert(self._filteredOptions, opt) end
+	self:_buildAllOptions()
+	self:_updateSelectedLabel()
+
+	self.window:ConnectFor(self, self.interact.MouseButton1Click, function()
+		if self._isOpen then self:_close() else self:_open() end
+	end)
+	self.window:ConnectFor(self, self.searchBox:GetPropertyChangedSignal("Text"), function()
+		self:_filterOptions(self.searchBox.Text)
+	end)
+	self.window:ConnectFor(self, self.main.MouseEnter, function()
+		if self._isOpen or not self.window:_interactive() then return end
+		Utility.Tween(self.title, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { TextColor3 = self.window.theme.ElementTextHoverColor })
+	end)
+	self.window:ConnectFor(self, self.main.MouseLeave, function()
+		Utility.Tween(self.title, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { TextColor3 = self.window.theme.ContentColor })
+	end)
+end
+
+function SearchableDropdown:_buildAllOptions()
+	for _, opt in self._filteredOptions do
+		self:_buildOption(opt)
+	end
+end
+
+function SearchableDropdown:_buildOption(optionName)
+	local frame = self.window:Create("Frame", {
+		Size = UDim2.new(1, -12, 0, 34), BorderSizePixel = 0,
+		BackgroundTransparency = 1, BackgroundColor3 = self.window.theme.DropdownHighlight,
+		Parent = self.list,
+	})
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = frame })
+	local interact = self.window:Create("TextButton", {
+		BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
+		Text = "", TextTransparency = 1, ZIndex = 50, Parent = frame,
+	})
+	local title = self.window:Create("TextLabel", {
+		Text = optionName, FontFace = self.window.theme.Font,
+		Size = UDim2.new(1, -24, 0, 16), Position = UDim2.new(0, 12, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5), BorderSizePixel = 0,
+		BackgroundTransparency = 1, TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextWrapped = true, TextTransparency = 0.2, ZIndex = 5,
+		TextColor3 = self.window.theme.ContentColor, Parent = frame,
+	})
+
+	local isOptionSelected = self.value == optionName
+	frame.BackgroundTransparency = isOptionSelected and 0.88 or 1
+	title.TextTransparency = isOptionSelected and 0 or 0.2
+	if isOptionSelected then title.TextColor3 = self.window.theme.AccentColor end
+
+	self.window:ConnectFor(self, interact.MouseButton1Click, function()
+		if not self._isOpen then return end
+		self.value = optionName
+		self:_updateSelectedLabel()
+		self.window:_runGuarded(self, self.callback, self.value)
+		self.window:_persist(self)
+		task.wait(0.1)
+		self:_close()
+	end)
+	return { frame = frame, title = title, name = optionName }
+end
+
+function SearchableDropdown:_filterOptions(query)
+	for _, child in self.list:GetChildren() do
+		if child:IsA("Frame") then child:Destroy() end
+	end
+	self._filteredOptions = {}
+	local lowerQuery = string.lower(query)
+	for _, opt in self.options do
+		if query == "" or string.find(string.lower(opt), lowerQuery, 1, true) then
+			table.insert(self._filteredOptions, opt)
+		end
+	end
+	self:_buildAllOptions()
+end
+
+function SearchableDropdown:_updateSelectedLabel()
+	self.selectedLabel.Text = self.value or self.placeholderText
+end
+
+function SearchableDropdown:_openHeight()
+	return math.min(250, 50 + #self._filteredOptions * 38 + 46)
+end
+
+function SearchableDropdown:_open()
+	if self._isOpen then return end
+	self._isOpen = true
+	if self._outsideClickConn then self.window:Disconnect(self._outsideClickConn) end
+	self._outsideClickConn = self.window:Connect(UserInputService.InputBegan, function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		local pos = input.Position
+		local mainPos = self.main.AbsolutePosition
+		local mainSize = self.main.AbsoluteSize
+		if pos.X < mainPos.X or pos.X > mainPos.X + mainSize.X or pos.Y < mainPos.Y or pos.Y > mainPos.Y + mainSize.Y then
+			self:_close()
+		end
+	end)
+	Utility.Tween(self.main, TweenInfo.new(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), { Size = UDim2.new(1, -20, 0, self:_openHeight()) })
+	Utility.Tween(self.chevron, TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), { Rotation = 0 })
+	Utility.Tween(self.panel, TweenInfo.new(0.3), { BackgroundTransparency = self.window.theme.ElementTransparency or 0 })
+	self.searchBox.Text = ""
+	self.searchBox:CaptureFocus()
+end
+
+function SearchableDropdown:_close()
+	if not self._isOpen then return end
+	self._isOpen = false
+	if self._outsideClickConn then self.window:Disconnect(self._outsideClickConn); self._outsideClickConn = nil end
+	Utility.Tween(self.chevron, TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), { Rotation = 180 })
+	Utility.Tween(self.panel, TweenInfo.new(0.3), { BackgroundTransparency = 1 })
+	Utility.Tween(self.main, TweenInfo.new(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), { Size = UDim2.new(1, -20, 0, 43) })
+end
+
+function SearchableDropdown:_buildDescription()
+	self.descriptor = self.window:Create("TextLabel", {
+		Text = self.description, FontFace = self.window.theme.Font,
+		Size = UDim2.new(1, -20, 0, 12), Position = UDim2.new(0, 18, 1, 2),
+		BackgroundTransparency = 1, TextSize = 11,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = self.window.theme.PlaceholderColor,
+		TextTransparency = 0.7, Parent = self.top,
+	})
+	self.main.Size = UDim2.new(1, -20, 0, 56)
+end
+
+function SearchableDropdown:_setShown(shown, animate)
+	local w = self.window
+	local info = animate and TweenInfo.new(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out) or nil
+	if shown then
+		w:_reveal(self.top, { BackgroundTransparency = w.theme.ElementTransparency or 0 }, animate, info)
+		w:_reveal(self.stroke, { Transparency = w.theme.ElementStrokeTransparency }, animate, info)
+		w:_reveal(self.title, { TextTransparency = 0 }, animate, info)
+		if self.iconLabel then w:_reveal(self.iconLabel, { ImageTransparency = 0 }, animate, info) end
+		w:_reveal(self.selectedLabel, { TextTransparency = 0.5 }, animate, info)
+		w:_reveal(self.chevron, { ImageTransparency = 0.5 }, animate, info)
+	else
+		w:_reveal(self.top, { BackgroundTransparency = 1 }, animate, info)
+		w:_reveal(self.stroke, { Transparency = 1 }, animate, info)
+		w:_reveal(self.title, { TextTransparency = 1 }, animate, info)
+		if self.iconLabel then w:_reveal(self.iconLabel, { ImageTransparency = 1 }, animate, info) end
+		w:_reveal(self.selectedLabel, { TextTransparency = 1 }, animate, info)
+		w:_reveal(self.chevron, { ImageTransparency = 1 }, animate, info)
+		if self._isOpen then self:_close() end
+	end
+end
+
+function SearchableDropdown:Set(value, skipCallback)
+	self.value = value
+	self:_updateSelectedLabel()
+	if not skipCallback then
+		self.window:_runGuarded(self, self.callback, self.value)
+		self.window:_persist(self)
+	end
+end
+
+function SearchableDropdown:Refresh(newOptions)
+	self.options = dedupStrings(newOptions or {})
+	self._filteredOptions = {}
+	for _, opt in self.options do table.insert(self._filteredOptions, opt) end
+	for _, child in self.list:GetChildren() do
+		if child:IsA("Frame") then child:Destroy() end
+	end
+	self:_buildAllOptions()
+	self:_updateSelectedLabel()
+end
+
+function SearchableDropdown:Add(option)
+	if typeof(option) ~= "string" or option == "" then return end
+	if table.find(self.options, option) then return end
+	table.insert(self.options, option)
+	table.insert(self._filteredOptions, option)
+	self:_buildOption(option)
+end
+
+function SearchableDropdown:Remove(option)
+	local idx = table.find(self.options, option)
+	if not idx then return end
+	table.remove(self.options, idx)
+	local fidx = table.find(self._filteredOptions, option)
+	if fidx then table.remove(self._filteredOptions, fidx) end
+	for _, child in self.list:GetChildren() do
+		if child:IsA("Frame") and child.Name == option then child:Destroy(); break end
+	end
+	if self.value == option then
+		self.value = ""
+		self:_updateSelectedLabel()
+		self.window:_runGuarded(self, self.callback, self.value)
+		self.window:_persist(self)
+	end
+end
+
+-- ============================================================================
+-- PROGRESS BAR COMPONENT
+-- ============================================================================
+local ProgressBar = {}
+ProgressBar.__index = ProgressBar
+ProgressBar.__type = "ProgressBar"
+
+function ProgressBar.new(tab, properties)
+	properties = if typeof(properties) == "table" then properties else {}
+	local self = setmetatable({
+		tab = tab, window = tab.window,
+		name = properties.name or properties.Name or "ProgressBar",
+		icon = properties.icon or properties.Icon,
+		description = properties.description or properties.Description,
+		flag = properties.flag or properties.Flag or (not (properties.forgetState or tab.forgetState) and Utility.DeriveFlag(properties.name or "ProgressBar") or nil),
+		forgetState = properties.forgetState or tab.forgetState,
+		min = properties.min or properties.Min or 0,
+		max = properties.max or properties.Max or 100,
+		value = properties.value or properties.Value or 0,
+		suffix = properties.suffix or properties.Suffix or "%",
+		callback = properties.callback or properties.Callback or function() end,
+		animated = properties.animated ~= false,
+		connections = {},
+	}, ProgressBar)
+	self.window:_registerControl(self)
+	self:_build()
+	table.insert(tab.elements, self)
+	if self.description then self:_buildDescription() end
+	return self
+end
+
+function ProgressBar:_build()
+	self.main = self.window:Create("Frame", {
+		Size = UDim2.new(1, -20, 0, 65), BorderSizePixel = 0,
+		Name = self.name, BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundTransparency = 1, Parent = self.tab.tabPage,
+	})
+	self.stroke = self.window:StyleElementBody(self.main)
+
+	local container = self.window:Create("Frame", {
+		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 18, 0.5, 0),
+		Size = UDim2.new(0, 170, 0, 33), BackgroundTransparency = 1,
+		BorderSizePixel = 0, ZIndex = 5, Parent = self.main,
+	})
+	self.window:Create("UIListLayout", {
+		Padding = UDim.new(0, 2), VerticalAlignment = Enum.VerticalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder, Parent = container,
+	})
+
+	local titleContainer = self.window:Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1,
+		BorderSizePixel = 0, ZIndex = 5, Parent = container,
+	})
+	self.window:Create("UIListLayout", {
+		Padding = UDim.new(0, 5), FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder, Parent = titleContainer,
+	})
+
+	if self.icon then
+		self.iconLabel = self.window:Create("ImageLabel", {
+			Image = self.icon, Size = UDim2.fromOffset(16, 16),
+			BorderSizePixel = 0, BackgroundTransparency = 1,
+			ImageTransparency = 1, ZIndex = 5, Parent = titleContainer,
+		}, { ImageColor3 = "ContentColor" })
+	end
+
+	self.title = self.window:Create("TextLabel", {
+		Text = self.name, FontFace = self.window.theme.Font,
+		Size = UDim2.new(1, 0, 0, 16), BorderSizePixel = 0,
+		BackgroundTransparency = 1, TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		TextTransparency = 1, ZIndex = 5,
+		TextColor3 = self.window.theme.ContentColor, Parent = titleContainer,
+	})
+
+	self.valueLabel = self.window:Create("TextLabel", {
+		Text = self:_format(self.value), FontFace = self.window.theme.Font,
+		Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
+		TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left,
+		TextTransparency = 1, ZIndex = 6,
+		TextColor3 = self.window.theme.AccentColor,
+		LayoutOrder = 1, Parent = container,
+	})
+
+	self.track = self.window:Create("Frame", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -15, 0.5, 0),
+		Size = UDim2.fromOffset(222, 10), BorderSizePixel = 0,
+		BackgroundColor3 = self.window.theme.SliderBackground, Parent = self.main,
+	})
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = self.track })
+
+	self.progress = self.window:Create("Frame", {
+		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5),
+		Size = UDim2.fromScale(self:_ratio(), 1), BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BorderSizePixel = 0, ZIndex = 2, Parent = self.track,
+	})
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = self.progress })
+	self.window:Create("UIGradient", {
+		Offset = Vector2.new(0, 0.5), Rotation = 2,
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.85), NumberSequenceKeypoint.new(1, 0),
+		}), Parent = self.progress,
+	}, { Color = "SliderProgress" })
+end
+
+function ProgressBar:_ratio()
+	local span = self.max - self.min
+	if span == 0 then return 0 end
+	return math.clamp((self.value - self.min) / span, 0, 1)
+end
+
+function ProgressBar:_format(value)
+	local text = string.format("%.0f", value)
+	if self.suffix ~= "" then return text .. self.suffix end
+	return text
+end
+
+function ProgressBar:Set(value, skipCallback)
+	self.value = math.clamp(value, self.min, self.max)
+	local ratio = self:_ratio()
+	local info = self.animated and TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out) or nil
+	if info then
+		Utility.Tween(self.progress, info, { Size = UDim2.fromScale(ratio, 1) })
+	else
+		self.progress.Size = UDim2.fromScale(ratio, 1)
+	end
+	self.valueLabel.Text = self:_format(self.value)
+	if not skipCallback then
+		self.window:_runGuarded(self, self.callback, self.value)
+		self.window:_persist(self)
+	end
+end
+
+function ProgressBar:_buildDescription()
+	self.descriptor = self.window:Create("TextLabel", {
+		Text = self.description, FontFace = self.window.theme.Font,
+		Size = UDim2.new(1, -20, 0, 12), Position = UDim2.new(0, 18, 1, 2),
+		BackgroundTransparency = 1, TextSize = 11,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = self.window.theme.PlaceholderColor,
+		TextTransparency = 0.7, Parent = self.main,
+	})
+	self.main.Size = UDim2.new(1, -20, 0, 78)
+end
+
+function ProgressBar:_setShown(shown, animate)
+	local w = self.window
+	local info = animate and TweenInfo.new(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out) or nil
+	if shown then
+		w:_reveal(self.main, { BackgroundTransparency = w.theme.ElementTransparency or 0 }, animate, info)
+		w:_reveal(self.stroke, { Transparency = w.theme.ElementStrokeTransparency }, animate, info)
+		w:_reveal(self.title, { TextTransparency = 0 }, animate, info)
+		if self.iconLabel then w:_reveal(self.iconLabel, { ImageTransparency = 0 }, animate, info) end
+		w:_reveal(self.valueLabel, { TextTransparency = 0 }, animate, info)
+		w:_reveal(self.track, { BackgroundTransparency = 0 }, animate, info)
+		w:_reveal(self.progress, { BackgroundTransparency = 0 }, animate, info)
+	else
+		w:_reveal(self.main, { BackgroundTransparency = 1 }, animate, info)
+		w:_reveal(self.stroke, { Transparency = 1 }, animate, info)
+		w:_reveal(self.title, { TextTransparency = 1 }, animate, info)
+		if self.iconLabel then w:_reveal(self.iconLabel, { ImageTransparency = 1 }, animate, info) end
+		w:_reveal(self.valueLabel, { TextTransparency = 1 }, animate, info)
+		w:_reveal(self.track, { BackgroundTransparency = 1 }, animate, info)
+		w:_reveal(self.progress, { BackgroundTransparency = 1 }, animate, info)
+	end
+end
+
+-- ============================================================================
+-- COLOR PICKER COMPONENT
+-- ============================================================================
+local ColorPicker = {}
+ColorPicker.__index = ColorPicker
+ColorPicker.__type = "ColorPicker"
+
+local function hsvToRgb(h, s, v)
+	local i = math.floor(h * 6)
+	local f = h * 6 - i
+	local p = v * (1 - s)
+	local q = v * (1 - f * s)
+	local t = v * (1 - (1 - f) * s)
+	i = i % 6
+	if i == 0 then return v, t, p
+	elseif i == 1 then return q, v, p
+	elseif i == 2 then return p, v, t
+	elseif i == 3 then return p, q, v
+	elseif i == 4 then return t, p, v
+	else return v, p, q end
+end
+
+local function rgbToHsv(r, g, b)
+	local max, min = math.max(r, g, b), math.min(r, g, b)
+	local d = max - min
+	local h, s, v = 0, 0, max
+	v = max
+	if max ~= 0 then s = d / max end
+	if d ~= 0 then
+		if max == r then h = (g - b) / d
+		elseif max == g then h = 2 + (b - r) / d
+		else h = 4 + (r - g) / d end
+		h = h / 6
+		if h < 0 then h = h + 1 end
+	end
+	return h, s, v
+end
+
+local function colorFromHSV(h, s, v)
+	local r, g, b = hsvToRgb(h, s, v)
+	return Color3.new(r, g, b)
+end
+
+function ColorPicker.new(tab, properties)
+	properties = if typeof(properties) == "table" then properties else {}
+	local initial = properties.color or properties.Color or properties.value or properties.Value or Color3.new(1, 1, 1)
+	local h, s, v = rgbToHsv(initial.R, initial.G, initial.B)
+	local self = setmetatable({
+		tab = tab, window = tab.window,
+		name = properties.name or properties.Name or "ColorPicker",
+		icon = properties.icon or properties.Icon,
+		description = properties.description or properties.Description,
+		flag = properties.flag or properties.Flag or (not (properties.forgetState or tab.forgetState) and Utility.DeriveFlag(properties.name or "ColorPicker") or nil),
+		forgetState = properties.forgetState or tab.forgetState,
+		callback = properties.callback or properties.Callback or function() end,
+		hue = h, saturation = s, brightness = v,
+		alpha = properties.alpha or properties.Alpha or false,
+		alphaValue = 1,
+		_isOpen = false,
+		_connections = {}, connections = {},
+	}, ColorPicker)
+	self.value = initial
+	self.window:_registerControl(self)
+	self:_build()
+	table.insert(tab.elements, self)
+	if self.description then self:_buildDescription() end
+	return self
+end
+
+function ColorPicker:_build()
+	self.main = self.window:Create("Frame", {
+		Size = UDim2.new(1, -20, 0, 43), BorderSizePixel = 0,
+		Name = self.name, ClipsDescendants = true,
+		BackgroundTransparency = 1, Parent = self.tab.tabPage,
+	})
+	self.top = self.window:Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 43), Position = UDim2.fromScale(0, 0),
+		BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundTransparency = 1, ZIndex = 1, Parent = self.main,
+	})
+	self.stroke = self.window:Create("UIStroke", {
+		Transparency = 1, Parent = self.top,
+	}, { Color = "ElementStroke", Transparency = "ElementStrokeTransparency" })
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = self.top })
+	self.window:Create("UIGradient", { Rotation = 270, Parent = self.top }, { Color = "ElementGradient" })
+	self.hoverOverlay = self.window:CreateHoverOverlay(self.top)
+	self.flashTarget = self.top
+
+	local container = self.window:Create("Frame", {
+		BorderSizePixel = 0, Parent = self.top,
+		Size = UDim2.new(0, 170, 0, 16),
+		Position = UDim2.new(0, 18, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 1, ZIndex = 5,
+	})
+	self.window:Create("UIListLayout", {
+		Padding = UDim.new(0, 5), FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		HorizontalAlignment = Enum.HorizontalAlignment.Left, Parent = container,
+	})
+
+	if self.icon then
+		self.iconLabel = self.window:Create("ImageLabel", {
+			Image = self.icon, Size = UDim2.fromOffset(16, 16),
+			BorderSizePixel = 0, BackgroundTransparency = 1,
+			ImageTransparency = 1, ZIndex = 5, Parent = container,
+		}, { ImageColor3 = "ContentColor" })
+	end
+
+	self.title = self.window:Create("TextLabel", {
+		Text = self.name, FontFace = self.window.theme.Font,
+		Size = UDim2.fromOffset(150, 16), BorderSizePixel = 0,
+		BackgroundTransparency = 1, TextSize = 14,
+		AutomaticSize = Enum.AutomaticSize.X,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextWrapped = true, TextTransparency = 1, ZIndex = 5,
+		TextColor3 = self.window.theme.ContentColor, Parent = container,
+	})
+
+	self.colorPreview = self.window:Create("Frame", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -18, 0.5, 0),
+		Size = UDim2.fromOffset(28, 18),
+		BackgroundColor3 = self.value,
+		BorderSizePixel = 0, ZIndex = 5, Parent = self.top,
+	})
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = self.colorPreview })
+	self.previewStroke = self.window:Create("UIStroke", {
+		Color = self.window.theme.ElementStroke, Transparency = 0.4, Parent = self.colorPreview,
+	})
+
+	self.interact = self.window:Create("TextButton", {
+		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 43),
+		Position = UDim2.fromScale(0, 0), BorderSizePixel = 0,
+		Text = "", TextTransparency = 1, ZIndex = 10,
+		AutoButtonColor = false, Parent = self.main,
+	})
+
+	self:_buildPanel()
+	self.window:ConnectFor(self, self.interact.MouseButton1Click, function()
+		if self._isOpen then self:_close() else self:_open() end
+	end)
+	self.window:ConnectFor(self, self.main.MouseEnter, function()
+		if self._isOpen or not self.window:_interactive() then return end
+		Utility.Tween(self.title, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { TextColor3 = self.window.theme.ElementTextHoverColor })
+	end)
+	self.window:ConnectFor(self, self.main.MouseLeave, function()
+		Utility.Tween(self.title, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { TextColor3 = self.window.theme.ContentColor })
+	end)
+end
+
+function ColorPicker:_buildPanel()
+	self.panelHeight = 200
+	self.panel = self.window:Create("Frame", {
+		AnchorPoint = Vector2.new(0, 0),
+		Position = UDim2.new(0, 0, 0, 49),
+		Size = UDim2.new(1, 0, 0, self.panelHeight), BorderSizePixel = 0,
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		ZIndex = 1, BackgroundTransparency = 1, Parent = self.main,
+	})
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = self.panel })
+	self.window:Create("UIStroke", { Transparency = 1, Parent = self.panel }, { Color = "ElementStroke", Transparency = "ElementStrokeTransparency" })
+	self.window:Create("UIGradient", { Rotation = 270, Parent = self.panel }, { Color = "ElementGradient" })
+	self.window:Create("UIPadding", {
+		PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12),
+		PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10), Parent = self.panel,
+	})
+
+	self饱和度Panel = self.window:Create("Frame", {
+		Size = UDim2.new(1, -120, 1, -30), BorderSizePixel = 0,
+		BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 5, Parent = self.panel,
+	})
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = self.饱和度Panel })
+
+	self.satGradient = self.window:Create("UIGradient", {
+		Color = ColorSequence.new(Color3.new(1, 1, 1), colorFromHSV(self.hue, 1, 1)),
+		Rotation = 0, Parent = self.饱和度Panel,
+	})
+
+	self.valOverlay = self.window:Create("Frame", {
+		Size = UDim2.fromScale(1, 1), BorderSizePixel = 0,
+		BackgroundColor3 = Color3.new(0, 0, 0), ZIndex = 6, Parent = self.饱和度Panel,
+	})
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = self.valOverlay })
+	self.window:Create("UIGradient", {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0), NumberSequenceKeypoint.new(1, 1),
+		}), Rotation = 90, Parent = self.valOverlay,
+	})
+
+	self.satCursor = self.window:Create("Frame", {
+		Size = UDim2.fromOffset(14, 14), AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(self.saturation, 0, 1 - self.brightness, 0),
+		BorderSizePixel = 0, ZIndex = 10, BackgroundColor3 = Color3.new(1, 1, 1), Parent = self.饱和度Panel,
+	})
+	self.window:Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = self.satCursor })
+	self.window:Create("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 2, Parent = self.satCursor })
+
+	self.hueBar = self.window:Create("Frame", {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -4, 0, 0),
+		Size = UDim2.new(0, 14, 1, -30), BorderSizePixel = 0,
+		BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 5, Parent = self.panel,
+	})
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = self.hueBar })
+	self.window:Create("UIGradient", {
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.new(1, 0, 0)),
+			ColorSequenceKeypoint.new(0.17, Color3.new(1, 1, 0)),
+			ColorSequenceKeypoint.new(0.33, Color3.new(0, 1, 0)),
+			ColorSequenceKeypoint.new(0.5, Color3.new(0, 1, 1)),
+			ColorSequenceKeypoint.new(0.67, Color3.new(0, 0, 1)),
+			ColorSequenceKeypoint.new(0.83, Color3.new(1, 0, 1)),
+			ColorSequenceKeypoint.new(1, Color3.new(1, 0, 0)),
+		}), Rotation = 90, Parent = self.hueBar,
+	})
+
+	self.hueCursor = self.window:Create("Frame", {
+		Size = UDim2.new(1, 4, 0, 4), AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, self.hue, 0),
+		BorderSizePixel = 0, ZIndex = 10, BackgroundColor3 = Color3.new(1, 1, 1), Parent = self.hueBar,
+	})
+	self.window:Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = self.hueCursor })
+	self.window:Create("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 1, Parent = self.hueCursor })
+
+	local infoArea = self.window:Create("Frame", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, -120, 0, 18), BorderSizePixel = 0,
+		BackgroundTransparency = 1, ZIndex = 5, Parent = self.panel,
+	})
+	self.window:Create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		Padding = UDim.new(0, 6), Parent = infoArea,
+	})
+
+	self.hexLabel = self.window:Create("TextLabel", {
+		Text = string.format("#%02X%02X%02X", math.floor(self.value.R * 255), math.floor(self.value.G * 255), math.floor(self.value.B * 255)),
+		FontFace = self.window.theme.Font, Size = UDim2.new(0, 80, 1, 0),
+		BackgroundTransparency = 1, TextSize = 12, ZIndex = 5,
+		TextColor3 = self.window.theme.PlaceholderColor, Parent = infoArea,
+	})
+
+	self.rgbLabel = self.window:Create("TextLabel", {
+		Text = string.format("%d, %d, %d", math.floor(self.value.R * 255), math.floor(self.value.G * 255), math.floor(self.value.B * 255)),
+		FontFace = self.window.theme.Font, Size = UDim2.new(0, 100, 1, 0),
+		BackgroundTransparency = 1, TextSize = 12, ZIndex = 5,
+		TextColor3 = self.window.theme.PlaceholderColor, Parent = infoArea,
+	})
+
+	self.satInteract = self.window:Create("TextButton", {
+		BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
+		Text = "", TextTransparency = 1, ZIndex = 15, Parent = self.饱和度Panel,
+	})
+	self.hueInteract = self.window:Create("TextButton", {
+		BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
+		Text = "", TextTransparency = 1, ZIndex = 15, Parent = self.hueBar,
+	})
+
+	self.window:ConnectFor(self, self.satInteract.InputBegan, function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			self._draggingSV = true
+			self:_updateSV(input)
+			if self._svConn then self._svConn:Disconnect() end
+			self._svConn = RunService.RenderStepped:Connect(function()
+				if not self._draggingSV then self._svConn:Disconnect(); return end
+				self:_updateSVFromMouse()
+			end)
+		end
+	end)
+	self.window:ConnectFor(self, UserInputService.InputEnded, function(input)
+		if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and self._draggingSV then
+			self._draggingSV = false
+			if self._svConn then self._svConn:Disconnect(); self._svConn = nil end
+			self.window:_persist(self)
+		end
+	end)
+
+	self.window:ConnectFor(self, self.hueInteract.InputBegan, function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			self._draggingHue = true
+			self:_updateHue(input)
+			if self._hueConn then self._hueConn:Disconnect() end
+			self._hueConn = RunService.RenderStepped:Connect(function()
+				if not self._draggingHue then self._hueConn:Disconnect(); return end
+				self:_updateHueFromMouse()
+			end)
+		end
+	end)
+	self.window:ConnectFor(self, UserInputService.InputEnded, function(input)
+		if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and self._draggingHue then
+			self._draggingHue = false
+			if self._hueConn then self._hueConn:Disconnect(); self._hueConn = nil end
+			self.window:_persist(self)
+		end
+	end)
+end
+
+function ColorPicker:_updateSV(input)
+	local absPos = self.饱和度Panel.AbsolutePosition
+	local absSize = self.饱和度Panel.AbsoluteSize
+	local x = math.clamp((input.Position.X - absPos.X) / absSize.X, 0, 1)
+	local y = math.clamp((input.Position.Y - absPos.Y) / absSize.Y, 0, 1)
+	self.saturation = x
+	self.brightness = 1 - y
+	self:_applyColor()
+end
+
+function ColorPicker:_updateSVFromMouse()
+	local mouse = UserInputService:GetMouseLocation()
+	local absPos = self.饱和度Panel.AbsolutePosition
+	local absSize = self.饱和度Panel.AbsoluteSize
+	local x = math.clamp((mouse.X - absPos.X) / absSize.X, 0, 1)
+	local y = math.clamp((mouse.Y - absPos.Y) / absSize.Y, 0, 1)
+	self.saturation = x
+	self.brightness = 1 - y
+	self:_applyColor()
+end
+
+function ColorPicker:_updateHue(input)
+	local absPos = self.hueBar.AbsolutePosition
+	local absSize = self.hueBar.AbsoluteSize
+	local y = math.clamp((input.Position.Y - absPos.Y) / absSize.Y, 0, 1)
+	self.hue = y
+	self:_applyColor()
+end
+
+function ColorPicker:_updateHueFromMouse()
+	local mouse = UserInputService:GetMouseLocation()
+	local absPos = self.hueBar.AbsolutePosition
+	local absSize = self.hueBar.AbsoluteSize
+	local y = math.clamp((mouse.Y - absPos.Y) / absSize.Y, 0, 1)
+	self.hue = y
+	self:_applyColor()
+end
+
+function ColorPicker:_applyColor()
+	self.value = colorFromHSV(self.hue, self.saturation, self.brightness)
+	self.colorPreview.BackgroundColor3 = self.value
+	self.satGradient.Color = ColorSequence.new(Color3.new(1, 1, 1), colorFromHSV(self.hue, 1, 1))
+	self.satCursor.Position = UDim2.new(self.saturation, 0, 1 - self.brightness, 0)
+	self.hueCursor.Position = UDim2.new(0.5, 0, self.hue, 0)
+	self.hexLabel.Text = string.format("#%02X%02X%02X", math.floor(self.value.R * 255), math.floor(self.value.G * 255), math.floor(self.value.B * 255))
+	self.rgbLabel.Text = string.format("%d, %d, %d", math.floor(self.value.R * 255), math.floor(self.value.G * 255), math.floor(self.value.B * 255))
+	self.window:_runGuarded(self, self.callback, self.value)
+end
+
+function ColorPicker:_open()
+	if self._isOpen then return end
+	self._isOpen = true
+	if self._outsideClickConn then self.window:Disconnect(self._outsideClickConn) end
+	self._outsideClickConn = self.window:Connect(UserInputService.InputBegan, function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		local pos = input.Position
+		local mainPos = self.main.AbsolutePosition
+		local mainSize = self.main.AbsoluteSize
+		if pos.X < mainPos.X or pos.X > mainPos.X + mainSize.X or pos.Y < mainPos.Y or pos.Y > mainPos.Y + mainSize.Y then
+			self:_close()
+		end
+	end)
+	Utility.Tween(self.main, TweenInfo.new(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), { Size = UDim2.new(1, -20, 0, 43 + self.panelHeight + 16) })
+	Utility.Tween(self.panel, TweenInfo.new(0.3), { BackgroundTransparency = self.window.theme.ElementTransparency or 0 })
+end
+
+function ColorPicker:_close()
+	if not self._isOpen then return end
+	self._isOpen = false
+	if self._outsideClickConn then self.window:Disconnect(self._outsideClickConn); self._outsideClickConn = nil end
+	Utility.Tween(self.main, TweenInfo.new(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), { Size = UDim2.new(1, -20, 0, 43) })
+	Utility.Tween(self.panel, TweenInfo.new(0.3), { BackgroundTransparency = 1 })
+end
+
+function ColorPicker:_buildDescription()
+	self.descriptor = self.window:Create("TextLabel", {
+		Text = self.description, FontFace = self.window.theme.Font,
+		Size = UDim2.new(1, -20, 0, 12), Position = UDim2.new(0, 18, 1, 2),
+		BackgroundTransparency = 1, TextSize = 11,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = self.window.theme.PlaceholderColor,
+		TextTransparency = 0.7, Parent = self.top,
+	})
+	self.main.Size = UDim2.new(1, -20, 0, 56)
+end
+
+function ColorPicker:_setShown(shown, animate)
+	local w = self.window
+	local info = animate and TweenInfo.new(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out) or nil
+	if shown then
+		w:_reveal(self.top, { BackgroundTransparency = w.theme.ElementTransparency or 0 }, animate, info)
+		w:_reveal(self.stroke, { Transparency = w.theme.ElementStrokeTransparency }, animate, info)
+		w:_reveal(self.title, { TextTransparency = 0 }, animate, info)
+		if self.iconLabel then w:_reveal(self.iconLabel, { ImageTransparency = 0 }, animate, info) end
+		w:_reveal(self.colorPreview, { BackgroundTransparency = 0 }, animate, info)
+	else
+		w:_reveal(self.top, { BackgroundTransparency = 1 }, animate, info)
+		w:_reveal(self.stroke, { Transparency = 1 }, animate, info)
+		w:_reveal(self.title, { TextTransparency = 1 }, animate, info)
+		if self.iconLabel then w:_reveal(self.iconLabel, { ImageTransparency = 1 }, animate, info) end
+		w:_reveal(self.colorPreview, { BackgroundTransparency = 1 }, animate, info)
+		if self._isOpen then self:_close() end
+	end
+end
+
+function ColorPicker:Set(color, skipCallback)
+	if typeof(color) == "Color3" then
+		local h, s, v = rgbToHsv(color.R, color.G, color.B)
+		self.hue = h; self.saturation = s; self.brightness = v
+		self.value = color
+		self:_applyColor()
+	end
+	if not skipCallback then
+		self.window:_runGuarded(self, self.callback, self.value)
+		self.window:_persist(self)
+	end
+end
+
+-- ============================================================================
+-- PARAGRAPH COMPONENT
+-- ============================================================================
+local Paragraph = {}
+Paragraph.__index = Paragraph
+Paragraph.__type = "Paragraph"
+
+function Paragraph.new(tab, properties)
+	properties = if typeof(properties) == "table" then properties else {}
+	local self = setmetatable({
+		tab = tab,
+		window = tab.window,
+		name = properties.name or properties.Name or "Paragraph",
+		icon = properties.icon or properties.Icon,
+		description = properties.description or properties.Description or properties.content or properties.Content or "",
+		links = properties.links or properties.Links,
+		connections = {},
+	}, Paragraph)
+	self:_build()
+	table.insert(tab.elements, self)
+	return self
+end
+
+function Paragraph:_build()
+	self.main = self.window:Create("Frame", {
+		Size = UDim2.new(1, -20, 0, 52), BorderSizePixel = 0,
+		Name = self.name, BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundTransparency = 1, Parent = self.tab.tabPage,
+	})
+	self.stroke = self.window:StyleElementBody(self.main)
+
+	local container = self.window:Create("Frame", {
+		BorderSizePixel = 0, Parent = self.main,
+		Size = UDim2.new(1, -36, 1, -12),
+		Position = UDim2.new(0, 18, 0, 6),
+		BackgroundTransparency = 1,
+	})
+	self.window:Create("UIListLayout", {
+		Padding = UDim.new(0, 2), FillDirection = Enum.FillDirection.Vertical,
+		SortOrder = Enum.SortOrder.LayoutOrder, Parent = container,
+	})
+
+	if self.icon then
+		self.iconLabel = self.window:Create("ImageLabel", {
+			Image = self.icon, Size = UDim2.fromOffset(16, 16),
+			BorderSizePixel = 0, BackgroundTransparency = 1, ImageTransparency = 1,
+			LayoutOrder = 0, Parent = container,
+		}, { ImageColor3 = "ContentColor" })
+	end
+
+	self.title = self.window:Create("TextLabel", {
+		Text = self.name, FontFace = self.window.theme.TitleFont,
+		Size = UDim2.new(1, 0, 0, 16), BorderSizePixel = 0,
+		BackgroundTransparency = 1, TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextWrapped = true, TextTransparency = 1, LayoutOrder = 1,
+		TextColor3 = self.window.theme.TitlingColor, Parent = container,
+	})
+
+	self.contentLabel = self.window:Create("TextLabel", {
+		Text = self.description, FontFace = self.window.theme.Font,
+		Size = UDim2.new(1, 0, 0, 12), BorderSizePixel = 0,
+		BackgroundTransparency = 1, TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextWrapped = true, TextTransparency = 0.6, LayoutOrder = 2,
+		TextColor3 = self.window.theme.PlaceholderColor, Parent = container,
+	})
+
+	local textHeight = TextService:GetTextSize(
+		self.description, 12, self.window.theme.Font,
+		Vector2.new(container.AbsoluteSize.X > 0 and container.AbsoluteSize.X or 300, 9999)
+	).Y
+	self.main.Size = UDim2.new(1, -20, 0, math.max(52, 16 + textHeight + 14))
+end
+
+function Paragraph:_setShown(shown, animate)
+	local w = self.window
+	local info = animate and TweenInfo.new(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out) or nil
+	if shown then
+		w:_reveal(self.main, { BackgroundTransparency = w.theme.ElementTransparency or 0 }, animate, info)
+		w:_reveal(self.stroke, { Transparency = w.theme.ElementStrokeTransparency }, animate, info)
+		w:_reveal(self.title, { TextTransparency = 0 }, animate, info)
+		w:_reveal(self.contentLabel, { TextTransparency = 0.6 }, animate, info)
+		if self.iconLabel then w:_reveal(self.iconLabel, { ImageTransparency = 0 }, animate, info) end
+	else
+		w:_reveal(self.main, { BackgroundTransparency = 1 }, animate, info)
+		w:_reveal(self.stroke, { Transparency = 1 }, animate, info)
+		w:_reveal(self.title, { TextTransparency = 1 }, animate, info)
+		w:_reveal(self.contentLabel, { TextTransparency = 1 }, animate, info)
+		if self.iconLabel then w:_reveal(self.iconLabel, { ImageTransparency = 1 }, animate, info) end
+	end
+end
+
+-- ============================================================================
+-- SEPARATOR COMPONENT
+-- ============================================================================
+local Separator = {}
+Separator.__index = Separator
+Separator.__type = "Separator"
+
+function Separator.new(tab, properties)
+	properties = if typeof(properties) == "table" then properties else {}
+	local self = setmetatable({
+		tab = tab,
+		window = tab.window,
+		name = properties.name or properties.Name or nil,
+		connections = {},
+	}, Separator)
+	self:_build()
+	table.insert(tab.elements, self)
+	return self
+end
+
+function Separator:_build()
+	local height = self.name and 28 or 16
+	self.main = self.window:Create("Frame", {
+		Size = UDim2.new(1, -20, 0, height), BorderSizePixel = 0,
+		BackgroundTransparency = 1, Parent = self.tab.tabPage,
+	})
+	if self.name then
+		self.label = self.window:Create("TextLabel", {
+			Text = self.name, FontFace = self.window.theme.Font,
+			Size = UDim2.new(1, 0, 0, 14), Position = UDim2.new(0.5, 0, 0.5, 0),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundTransparency = 1, TextSize = 11,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextColor3 = self.window.theme.PlaceholderColor,
+			TextTransparency = 0.5, Parent = self.main,
+		})
+	end
+	self.lineLeft = self.window:Create("Frame", {
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 0, 0.5, 0),
+		Size = UDim2.new(0.5, if self.name then -40 else -10, 0, 1),
+		BackgroundColor3 = self.window.theme.ElementStroke,
+		BorderSizePixel = 0, BackgroundTransparency = 0.5, Parent = self.main,
+	})
+	self.lineRight = self.window:Create("Frame", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, 0, 0.5, 0),
+		Size = UDim2.new(0.5, if self.name then -40 else -10, 0, 1),
+		BackgroundColor3 = self.window.theme.ElementStroke,
+		BorderSizePixel = 0, BackgroundTransparency = 0.5, Parent = self.main,
+	})
+end
+
+function Separator:_setShown(shown, animate)
+	local w = self.window
+	local info = animate and TweenInfo.new(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out) or nil
+	if shown then
+		w:_reveal(self.lineLeft, { BackgroundTransparency = 0.5 }, animate, info)
+		w:_reveal(self.lineRight, { BackgroundTransparency = 0.5 }, animate, info)
+		if self.label then w:_reveal(self.label, { TextTransparency = 0.5 }, animate, info) end
+	else
+		w:_reveal(self.lineLeft, { BackgroundTransparency = 1 }, animate, info)
+		w:_reveal(self.lineRight, { BackgroundTransparency = 1 }, animate, info)
+		if self.label then w:_reveal(self.label, { TextTransparency = 1 }, animate, info) end
+	end
+end
+
+-- ============================================================================
 -- TAB COMPONENT
 -- ============================================================================
 local Tab = {}
@@ -1799,6 +3962,11 @@ function Tab:CreateSlider(properties) return Slider.new(self, properties) end
 function Tab:CreateDropdown(properties) return Dropdown.new(self, properties) end
 function Tab:CreateInput(properties) return Input.new(self, properties) end
 function Tab:CreateKeybind(properties) return Keybind.new(self, properties) end
+function Tab:CreateColorPicker(properties) return ColorPicker.new(self, properties) end
+function Tab:CreateParagraph(properties) return Paragraph.new(self, properties) end
+function Tab:CreateSeparator(properties) return Separator.new(self, properties) end
+function Tab:CreateSearchDropdown(properties) return SearchableDropdown.new(self, properties) end
+function Tab:CreateProgressBar(properties) return ProgressBar.new(self, properties) end
 
 function Tab:Create(className, properties, themeBindings)
 	return self.window:Create(className, properties, themeBindings)
@@ -2346,6 +4514,575 @@ function Window:Unload()
 	for i = #self.instances, 1, -1 do self.instances[i]:Destroy() end
 	table.clear(self.connections); table.clear(self.instances)
 	table.clear(self.controls); table.clear(self.tabs)
+end
+
+-- ============================================================================
+-- TOOLTIP SYSTEM
+-- ============================================================================
+local Tooltip = {}
+Tooltip.__index = Tooltip
+Tooltip._activeTooltip = nil
+
+function Tooltip.new(window)
+	local self = setmetatable({}, Tooltip)
+	self.window = window
+	self.instance = nil
+	self.visible = false
+	self:_build()
+	return self
+end
+
+function Tooltip:_build()
+	self.instance = self.window:Create("Frame", {
+		Name = "Tooltip",
+		AutomaticSize = Enum.AutomaticSize.XY,
+		BackgroundColor3 = self.window.theme.WindowBackground,
+		BorderSizePixel = 0,
+		Visible = false,
+		ZIndex = 1000,
+		Parent = self.window.screenGui,
+	})
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = self.instance })
+	self.window:Create("UIStroke", {
+		Color = self.window.theme.ElementStroke,
+		Transparency = 0.4,
+		Parent = self.instance,
+	})
+	self.window:Create("UIPadding", {
+		PaddingLeft = UDim.new(0, 10),
+		PaddingRight = UDim.new(0, 10),
+		PaddingTop = UDim.new(0, 6),
+		PaddingBottom = UDim.new(0, 6),
+		Parent = self.instance,
+	})
+	self.window:Create("UIShadow", {
+		BlurRadius = UDim.new(0, 16),
+		Color = Color3.fromRGB(0, 0, 0),
+		Transparency = 0.7,
+		Parent = self.instance,
+	})
+	self.label = self.window:Create("TextLabel", {
+		AutomaticSize = Enum.AutomaticSize.XY,
+		BackgroundTransparency = 1,
+		FontFace = self.window.theme.Font,
+		TextSize = 12,
+		TextColor3 = self.window.theme.ContentColor,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = self.instance,
+	})
+end
+
+function Tooltip:Show(text, position)
+	if Tooltip._activeTooltip and Tooltip._activeTooltip ~= self then
+		Tooltip._activeTooltip:Hide()
+	end
+	Tooltip._activeTooltip = self
+	self.label.Text = text
+	self.instance.Visible = true
+	self.visible = true
+	local textSize = TextService:GetTextSize(text, 12, self.window.theme.Font, Vector2.new(300, 9999))
+	self.instance.Size = UDim2.fromOffset(textSize.X + 20, textSize.Y + 12)
+	local screenGuiSize = self.window.screenGui.AbsoluteSize
+	local x = math.clamp(position.X + 12, 0, screenGuiSize.X - self.instance.AbsoluteSize.X - 4)
+	local y = math.clamp(position.Y - self.instance.AbsoluteSize.Y - 8, 0, screenGuiSize.Y - self.instance.AbsoluteSize.Y - 4)
+	self.instance.Position = UDim2.fromOffset(x, y)
+	self.instance.BackgroundTransparency = 0.02
+	self.label.TextTransparency = 0
+end
+
+function Tooltip:Hide()
+	if not self.visible then return end
+	self.visible = false
+	self.instance.Visible = false
+	if Tooltip._activeTooltip == self then Tooltip._activeTooltip = nil end
+end
+
+function Tooltip:BindTo(element, text)
+	local conn1, conn2
+	conn1 = self.window:Connect(element.MouseEnter, function()
+		if not self.window:_interactive() then return end
+		task.delay(0.4, function()
+			if not self.visible then
+				local pos = element.AbsolutePosition + element.AbsoluteSize * 0.5
+				self:Show(text, pos)
+			end
+		end)
+	end)
+	conn2 = self.window:Connect(element.MouseLeave, function()
+		self:Hide()
+	end)
+	return { conn1, conn2 }
+end
+
+-- ============================================================================
+-- NOTIFICATION QUEUE SYSTEM
+-- ============================================================================
+local NotificationQueue = {}
+NotificationQueue.__index = NotificationQueue
+
+function NotificationQueue.new(window)
+	local self = setmetatable({}, NotificationQueue)
+	self.window = window
+	self.queue = {}
+	self.container = nil
+	self.maxVisible = 5
+	self.spacing = 8
+	self:_build()
+	return self
+end
+
+function NotificationQueue:_build()
+	self.container = self.window:Create("Frame", {
+		Name = "NotificationQueue",
+		Size = UDim2.new(0, 300, 0, 600),
+		Position = UDim2.new(1, -20, 1, -20),
+		AnchorPoint = Vector2.new(1, 1),
+		BackgroundTransparency = 1,
+		Parent = self.window.screenGui,
+	})
+	self.window:Create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Vertical,
+		VerticalAlignment = Enum.VerticalAlignment.Bottom,
+		HorizontalAlignment = Enum.HorizontalAlignment.Right,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, self.spacing),
+		Parent = self.container,
+	})
+end
+
+function NotificationQueue:Push(properties)
+	properties = properties or {}
+	local duration = properties.duration or 3
+	local notifType = properties.type or "info"
+	local title = properties.title or "Notification"
+	local content = properties.content or ""
+	local icon = properties.icon
+
+	local bgColor, accentColor, defaultIcon
+	if notifType == "success" then
+		bgColor = Color3.fromRGB(20, 40, 25)
+		accentColor = self.window.theme.SuccessColor or Color3.fromRGB(60, 180, 80)
+		defaultIcon = "rbxassetid://6031068420"
+	elseif notifType == "error" then
+		bgColor = Color3.fromRGB(40, 20, 20)
+		accentColor = self.window.theme.ErrorColor or Color3.fromRGB(200, 60, 60)
+		defaultIcon = "rbxassetid://6031068420"
+	elseif notifType == "warning" then
+		bgColor = Color3.fromRGB(40, 35, 15)
+		accentColor = Color3.fromRGB(220, 180, 50)
+		defaultIcon = "rbxassetid://6031068420"
+	else
+		bgColor = self.window.theme.ElementBackground
+		accentColor = self.window.theme.AccentColor
+		defaultIcon = "rbxassetid://6031068420"
+	end
+
+	local notifFrame = self.window:Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 56),
+		BackgroundColor3 = bgColor,
+		BorderSizePixel = 0,
+		BackgroundTransparency = 0.05,
+		LayoutOrder = #self.queue + 1,
+		Parent = self.container,
+	})
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = notifFrame })
+	self.window:Create("UIStroke", {
+		Color = accentColor,
+		Transparency = 0.6,
+		Thickness = 1,
+		Parent = notifFrame,
+	})
+	self.window:Create("UIPadding", {
+		PaddingLeft = UDim.new(0, 12),
+		PaddingRight = UDim.new(0, 12),
+		PaddingTop = UDim.new(0, 8),
+		PaddingBottom = UDim.new(0, 8),
+		Parent = notifFrame,
+	})
+
+	local iconFrame = self.window:Create("Frame", {
+		Size = UDim2.fromOffset(28, 28),
+		BackgroundColor3 = accentColor,
+		BackgroundTransparency = 0.85,
+		BorderSizePixel = 0,
+		Parent = notifFrame,
+	})
+	self.window:Create("UICorner", { CornerRadius = UDim.new(0, 7), Parent = iconFrame })
+	self.window:Create("ImageLabel", {
+		Image = icon or defaultIcon,
+		Size = UDim2.fromOffset(14, 14),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundTransparency = 1,
+		ImageColor3 = accentColor,
+		Parent = iconFrame,
+	})
+
+	self.window:Create("TextLabel", {
+		Text = title,
+		FontFace = self.window.theme.TitleFont,
+		Size = UDim2.new(1, -44, 0, 16),
+		Position = UDim2.new(0, 40, 0, 6),
+		BackgroundTransparency = 1,
+		TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		TextColor3 = self.window.theme.TitlingColor,
+		Parent = notifFrame,
+	})
+
+	if content ~= "" then
+		self.window:Create("TextLabel", {
+			Text = content,
+			FontFace = self.window.theme.Font,
+			Size = UDim2.new(1, -44, 0, 12),
+			Position = UDim2.new(0, 40, 0, 24),
+			BackgroundTransparency = 1,
+			TextSize = 11,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			TextColor3 = self.window.theme.PlaceholderColor,
+			Parent = notifFrame,
+		})
+	end
+
+	notifFrame.BackgroundTransparency = 1
+	Utility.Tween(notifFrame, Utility.TweenInfo(0.3), { BackgroundTransparency = 0.05 })
+
+	table.insert(self.queue, { frame = notifFrame, duration = duration })
+
+	task.delay(duration, function()
+		Utility.Tween(notifFrame, Utility.TweenInfo(0.3), { BackgroundTransparency = 1 })
+		task.delay(0.3, function()
+			notifFrame:Destroy()
+			for i, entry in self.queue do
+				if entry.frame == notifFrame then
+					table.remove(self.queue, i)
+					break
+				end
+			end
+		end)
+	end)
+
+	return notifFrame
+end
+
+function NotificationQueue:Clear()
+	for _, entry in self.queue do
+		Utility.Tween(entry.frame, Utility.TweenInfo(0.2), { BackgroundTransparency = 1 })
+		task.delay(0.2, function() entry.frame:Destroy() end)
+	end
+	table.clear(self.queue)
+end
+
+-- ============================================================================
+-- RIPPLE EFFECT UTILITY
+-- ============================================================================
+local Ripple = {}
+
+function Ripple.new(parent, position, color, radius)
+	radius = radius or 60
+	local ripple = Instance.new("Frame")
+	ripple.Name = "Ripple"
+	ripple.AnchorPoint = Vector2.new(0.5, 0.5)
+	ripple.BackgroundColor3 = color or Color3.new(1, 1, 1)
+	ripple.BackgroundTransparency = 0.7
+	ripple.BorderSizePixel = 0
+	ripple.Size = UDim2.fromOffset(0, 0)
+	ripple.Position = UDim2.new(
+		(position.X - parent.AbsolutePosition.X) / parent.AbsoluteSize.X,
+		0,
+		(position.Y - parent.AbsolutePosition.Y) / parent.AbsoluteSize.Y,
+		0
+	)
+	ripple.ZIndex = 50
+	ripple.Parent = parent
+
+	Instance.new("UICorner", ripple).CornerRadius = UDim.new(1, 0)
+
+	local maxSize = math.max(parent.AbsoluteSize.X, parent.AbsoluteSize.Y) * 2
+	TweenService:Create(ripple, TweenInfo.new(0.5, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+		Size = UDim2.fromOffset(maxSize, maxSize),
+		BackgroundTransparency = 1,
+	}):Play()
+
+	task.delay(0.5, function() ripple:Destroy() end)
+	return ripple
+end
+
+-- ============================================================================
+-- DEBOUNCE / THROTTLE UTILITIES
+-- ============================================================================
+local function debounce(fn, delay)
+	local lastCall = 0
+	local pendingThread = nil
+	return function(...)
+		local now = tick()
+		if pendingThread then task.cancel(pendingThread) end
+		pendingThread = task.delay(delay, function()
+			fn(...)
+			lastCall = tick()
+		end)
+	end
+end
+
+local function throttle(fn, interval)
+	local lastCall = 0
+	return function(...)
+		local now = tick()
+		if now - lastCall >= interval then
+			lastCall = now
+			return fn(...)
+		end
+	end
+end
+
+local function afterLastTween(instance, callback)
+	local connection
+	connection = instance:GetPropertyChangedSignal("Position"):Connect(function()
+		-- simple post-tween hook
+	end)
+	task.delay(0.5, function()
+		if connection then connection:Disconnect() end
+		callback()
+	end)
+end
+
+-- ============================================================================
+-- ANIMATION PRESETS
+-- ============================================================================
+local AnimationPresets = {}
+
+AnimationPresets.SlideInFromLeft = {
+	start = function(instance)
+		local originalPos = instance.Position
+		instance.Position = UDim2.new(originalPos.X.Scale, originalPos.X.Offset - 60, originalPos.Y.Scale, originalPos.Y.Offset)
+		instance.BackgroundTransparency = 1
+	end,
+	finish = function(instance, info)
+		return { Position = instance.Position, BackgroundTransparency = 0 }
+	end,
+}
+
+AnimationPresets.SlideInFromRight = {
+	start = function(instance)
+		local originalPos = instance.Position
+		instance.Position = UDim2.new(originalPos.X.Scale, originalPos.X.Offset + 60, originalPos.Y.Scale, originalPos.Y.Offset)
+		instance.BackgroundTransparency = 1
+	end,
+	finish = function(instance, info)
+		return { Position = instance.Position, BackgroundTransparency = 0 }
+	end,
+}
+
+AnimationPresets.ScaleIn = {
+	start = function(instance)
+		instance.Size = UDim2.new(instance.Size.X.Scale, instance.Size.X.Offset, instance.Size.Y.Scale * 0.8, instance.Size.Y.Offset * 0.8)
+		instance.BackgroundTransparency = 1
+	end,
+	finish = function(instance, info)
+		return { BackgroundTransparency = 0 }
+	end,
+}
+
+AnimationPresets.FadeInUp = {
+	start = function(instance)
+		local originalPos = instance.Position
+		instance.Position = UDim2.new(originalPos.X.Scale, originalPos.X.Offset, originalPos.Y.Scale, originalPos.Y.Offset + 20)
+		instance.BackgroundTransparency = 1
+	end,
+	finish = function(instance, info)
+		return { Position = instance.Position, BackgroundTransparency = 0 }
+	end,
+}
+
+AnimationPresets.PopBounce = {
+	start = function(instance)
+		instance.Size = UDim2.new(instance.Size.X.Scale, instance.Size.X.Offset * 0.85, instance.Size.Y.Scale, instance.Size.Y.Offset * 0.85)
+	end,
+	finish = function(instance, info)
+		return {}
+	end,
+	info = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+}
+
+AnimationPresets.GlowPulse = {
+	start = function(instance) end,
+	finish = function(instance, info)
+		return {}
+	end,
+}
+
+-- ============================================================================
+-- ENHANCED WINDOW FEATURES (MINIMIZE, CLOSE, MAXIMIZE)
+-- ============================================================================
+-- These are injected into the existing Window class via patching
+local _originalWindowBuild = Window._buildTopbar
+
+function Window:_buildTopbar()
+	_originalWindowBuild(self)
+
+	self.closeButton = self:Create("Frame", {
+		Size = UDim2.fromOffset(24, 24),
+		BackgroundColor3 = Color3.fromRGB(200, 60, 60),
+		BorderSizePixel = 0,
+		Parent = self.actionContainer,
+	})
+	self:Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = self.closeButton })
+	local closeIcon = self:Create("Frame", {
+		Size = UDim2.fromOffset(8, 2),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = Color3.fromRGB(80, 20, 20),
+		BorderSizePixel = 0,
+		Parent = self.closeButton,
+	})
+	self:Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = closeIcon })
+	local closeIcon2 = self:Create("Frame", {
+		Size = UDim2.fromOffset(2, 8),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = Color3.fromRGB(80, 20, 20),
+		BorderSizePixel = 0,
+		Rotation = 0,
+		Parent = self.closeButton,
+	})
+	self:Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = closeIcon2 })
+	local closeBtn = self:Create("TextButton", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Text = "",
+		ZIndex = 15,
+		Parent = self.closeButton,
+	})
+	self:Connect(closeBtn.MouseButton1Click, function()
+		self:Unload()
+	end)
+	self:Connect(self.closeButton.MouseEnter, function()
+		Utility.Tween(self.closeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(220, 70, 70) })
+		Utility.Tween(closeIcon, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(255, 255, 255) })
+		Utility.Tween(closeIcon2, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(255, 255, 255) })
+	end)
+	self:Connect(self.closeButton.MouseLeave, function()
+		Utility.Tween(self.closeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(200, 60, 60) })
+		Utility.Tween(closeIcon, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(80, 20, 20) })
+		Utility.Tween(closeIcon2, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(80, 20, 20) })
+	end)
+
+	self.minimizeButton = self:Create("Frame", {
+		Size = UDim2.fromOffset(24, 24),
+		BackgroundColor3 = Color3.fromRGB(220, 180, 50),
+		BorderSizePixel = 0,
+		LayoutOrder = -1,
+		Parent = self.actionContainer,
+	})
+	self:Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = self.minimizeButton })
+	local minBar = self:Create("Frame", {
+		Size = UDim2.fromOffset(8, 2),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = Color3.fromRGB(100, 80, 20),
+		BorderSizePixel = 0,
+		Parent = self.minimizeButton,
+	})
+	self:Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = minBar })
+	local minBtn = self:Create("TextButton", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Text = "",
+		ZIndex = 15,
+		Parent = self.minimizeButton,
+	})
+	self:Connect(minBtn.MouseButton1Click, function()
+		self:Hide()
+	end)
+	self:Connect(self.minimizeButton.MouseEnter, function()
+		Utility.Tween(self.minimizeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(240, 200, 60) })
+		Utility.Tween(minBar, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(255, 255, 255) })
+	end)
+	self:Connect(self.minimizeButton.MouseLeave, function()
+		Utility.Tween(self.minimizeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(220, 180, 50) })
+		Utility.Tween(minBar, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(100, 80, 20) })
+	end)
+
+	self.maximizeButton = self:Create("Frame", {
+		Size = UDim2.fromOffset(24, 24),
+		BackgroundColor3 = Color3.fromRGB(60, 180, 80),
+		BorderSizePixel = 0,
+		LayoutOrder = -2,
+		Parent = self.actionContainer,
+	})
+	self:Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = self.maximizeButton })
+	local maxIcon = self:Create("Frame", {
+		Size = UDim2.fromOffset(8, 8),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = Color3.fromRGB(20, 80, 30),
+		BorderSizePixel = 0,
+		Parent = self.maximizeButton,
+	})
+	self:Create("UICorner", { CornerRadius = UDim.new(0, 2), Parent = maxIcon })
+	self:Create("UIStroke", { Color = Color3.fromRGB(20, 80, 30), Thickness = 1, Parent = maxIcon })
+	local maxBtn = self:Create("TextButton", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Text = "",
+		ZIndex = 15,
+		Parent = self.maximizeButton,
+	})
+	self._maximized = false
+	self._preMaxSize = nil
+	self:Connect(maxBtn.MouseButton1Click, function()
+		self._maximized = not self._maximized
+		if self._maximized then
+			self._preMaxSize = self.main.Size
+			Utility.Tween(self.main, Utility.TweenInfo(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+				Size = UDim2.new(0.8, 0, 0.85, 0),
+				Position = UDim2.new(0.5, 0, 0.5, 0),
+			})
+		else
+			Utility.Tween(self.main, Utility.TweenInfo(0.4, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+				Size = self._preMaxSize or UDim2.fromOffset(520, 460),
+				Position = UDim2.new(0.5, 0, 0.5, 0),
+			})
+		end
+	end)
+	self:Connect(self.maximizeButton.MouseEnter, function()
+		Utility.Tween(self.maximizeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(70, 200, 90) })
+		Utility.Tween(maxIcon, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(255, 255, 255) })
+	end)
+	self:Connect(self.maximizeButton.MouseLeave, function()
+		Utility.Tween(self.maximizeButton, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(60, 180, 80) })
+		Utility.Tween(maxIcon, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(20, 80, 30) })
+	end)
+end
+
+-- ============================================================================
+-- WINDOW ENHANCED NOTIFICATION (override with queue)
+-- ============================================================================
+local _originalNotify = Window.Notify
+
+function Window:Notify(properties)
+	if not self._notifQueue then
+		self._notifQueue = NotificationQueue.new(self)
+	end
+	return self._notifQueue:Push(properties)
+end
+
+-- ============================================================================
+-- TAB ENHANCED: CREATE LABEL (alias for paragraph short form)
+-- ============================================================================
+function Tab:CreateLabel(properties)
+	properties = properties or {}
+	properties.description = properties.description or properties.text or properties.Text or properties.content or ""
+	return Paragraph.new(self, properties)
+end
+
+-- ============================================================================
+-- WINDOW: TOOLTIP FACTORY
+-- ============================================================================
+function Window:CreateTooltip()
+	return Tooltip.new(self)
 end
 
 -- ============================================================================
